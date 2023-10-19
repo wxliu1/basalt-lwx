@@ -1,0 +1,12 @@
+
+./basalt_vio --dataset-path ~/dataset/euroc_data/MH_05_difficult/ --cam-calib ../data/euroc_ds_calib.json --dataset-type euroc --config-path ../data/euroc_config.json --marg-data euroc_marg_data --show-gui 1
+
+
+./basalt_vio --dataset-path ~/dataset/euroc_data/MH_05_difficult/ --cam-calib ../data/euroc_ds_calib.json --dataset-type euroc --config-path ../data/euroc_config.json  --show-gui 1 --use-imu 1
+
+
+
+./basalt_convert_kitti_calib.py -d ~/dataset/kitti/sequences/00/
+
+
+./basalt_vio --dataset-path ~/dataset/kitti/sequences/00/ --cam-calib ~/dataset/kitti/sequences/00/basalt_calib.json --dataset-type kitti --config-path ../data/kitti_config.json --show-gui 1 --use-imu 0
