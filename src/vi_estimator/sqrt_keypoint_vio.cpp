@@ -147,6 +147,7 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(
   initialize(bg, ba);
 }
 
+// vio 后端初始化
 template <class Scalar_>
 void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
                                                    const Eigen::Vector3d& ba_) {

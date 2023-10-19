@@ -63,6 +63,9 @@ VioEstimatorBase::Ptr factory_helper(const VioConfig& config,
 VioEstimatorBase::Ptr VioEstimatorFactory::getVioEstimator(
     const VioConfig& config, const Calibration<double>& cam,
     const Eigen::Vector3d& g, bool use_imu, bool use_double) {
+
+  // BASALT_INSTANTIATIONS_DOUBLE 和 BASALT_INSTANTIATIONS_FLOAT均在CMakeLists.txt中设置为ON
+  // 说明这个预编译宏开关，可以在编译阶段通过CMakeLists.txt来决定。    
   if (use_double) {
 #ifdef BASALT_INSTANTIATIONS_DOUBLE
     std::cout << "double instantiations.\n";
