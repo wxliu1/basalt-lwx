@@ -1,2 +1,2 @@
 # basalt-lwx
-add lots of comments mainly in chinese.
+This is a version of basalt with adding comments mainly in chinese.
