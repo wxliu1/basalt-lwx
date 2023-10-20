@@ -110,7 +110,7 @@ class EurocVioDataset : public VioDataset {
           for (size_t i = 0; i < full_size; i++) {
             int val = data_in[i];
             val = val << 8;
-            data_out[i] = val;
+            data_out[i] = val; // 每个data_out[i]的高八位是图像数据，低八位是0x00.
           }
         } else if (img.type() == CV_8UC3) {
           res[i].img.reset(new ManagedImage<uint16_t>(img.cols, img.rows));
@@ -122,12 +122,12 @@ class EurocVioDataset : public VioDataset {
           for (size_t i = 0; i < full_size; i++) {
             int val = data_in[i * 3];
             val = val << 8;
-            data_out[i] = val;
+            data_out[i] = val; // 每个data_out[i]的高八位是第3通道的图像数据，低八位是0x00. 前面两个通道的图像数据丢掉了。
           }
         } else if (img.type() == CV_16UC1) {
           res[i].img.reset(new ManagedImage<uint16_t>(img.cols, img.rows));
           std::memcpy(res[i].img->ptr, img.ptr(),
-                      img.cols * img.rows * sizeof(uint16_t));
+                      img.cols * img.rows * sizeof(uint16_t)); // 如果是单通道16bit数据，直接使用memcpy拷贝
 
         } else {
           std::cerr << "img.fmt.bpp " << img.type() << std::endl;

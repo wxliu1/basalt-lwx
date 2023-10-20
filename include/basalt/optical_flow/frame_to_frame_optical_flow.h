@@ -118,7 +118,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
   void processFrame(int64_t curr_t_ns, OpticalFlowInput::Ptr& new_img_vec) {
     
-    // 如果图像的数据为空直接返回
+    // 如果图像的数据为空（指针）直接返回
     for (const auto& v : new_img_vec->img_data) {
       if (!v.img.get()) return;
     }
@@ -130,7 +130,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
       transforms.reset(new OpticalFlowResult);
       // step l : feature 像素位姿的观测容器transforms初始化
-      transforms->observations.resize(calib.intrinsics.size()); // 设置观测容器大小
+      transforms->observations.resize(calib.intrinsics.size()); // 设置观测容器大小，对于双目来说size就是2
       transforms->t_ns = t_ns; // 时间戳复制
 
       // step 2 : 设置图像金字塔,注意为金字塔开辟的是一个数组
@@ -144,7 +144,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
                         [&](const tbb::blocked_range<size_t>& r) {
                           for (size_t i = r.begin(); i != r.end(); ++i) {
                             //遍历每一个相机，构建图像金字塔
-                            //参数1 : 原始图片参数2 : 建金字塔层数
+                            //参数1 : 原始图片, 参数2 : 建金字塔层数
                             pyramid->at(i).setFromImage(
                                 *new_img_vec->img_data[i].img,
                                 config.optical_flow_levels);

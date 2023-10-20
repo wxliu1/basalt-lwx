@@ -186,7 +186,7 @@ void feed_images() {
   }
 
   // Indicate the end of the sequence
-  opt_flow_ptr->input_queue.push(nullptr);
+  opt_flow_ptr->input_queue.push(nullptr); /// 队列中push空指针，指示图像序列的结束
 
   std::cout << "Finished input_data thread " << std::endl;
 }
