@@ -158,7 +158,7 @@ basalt::OpticalFlowBase::Ptr opt_flow_ptr;
 basalt::VioEstimatorBase::Ptr vio;
 
 // Feed functions
-// 将图像push到前端opt_flow的输入队列中
+// 读取图像并喂给光流追踪: 将图像push到前端opt_flow的输入队列中
 void feed_images() {
   std::cout << "Started input_data thread " << std::endl;
   // 遍历数据集每一张图片
@@ -173,6 +173,7 @@ void feed_images() {
       cv.wait(lk);
     }
 
+    // step 1 构建光流跟踪结构体并把时间戳图像数据放进去
     basalt::OpticalFlowInput::Ptr data(new basalt::OpticalFlowInput);
 
     // 转换成视觉前端的输入类型
@@ -181,10 +182,11 @@ void feed_images() {
 
     timestamp_to_id[data->t_ns] = i;
 
-    // 将数据压入到视觉前端的队列中
+    // step 2 塞入到输入队列中: 将数据压入到视觉前端的队列中
     opt_flow_ptr->input_queue.push(data);
   }
 
+  // step 3 如果运行完塞入一个空的数据，告诉后面的数据结束
   // Indicate the end of the sequence
   opt_flow_ptr->input_queue.push(nullptr); /// 队列中push空指针，指示图像序列的结束
 
@@ -302,12 +304,13 @@ int main(int argc, char** argv) {
     show_frame.Meta().range[1] = vio_dataset->get_image_timestamps().size() - 1;
     show_frame.Meta().gui_changed = true;
     
-    // 视觉前端初始化
+    // 视觉前端初始化: 根据pattern的格式不同重新新建了光流追踪的线程
     // calib 包含：相机到imu的外参，相机内参，图像分辨率，渐晕，imu速率，noise, bias等。
     // vio_config 前端和后端的相关配置，比如光流的各个参数，vio的各个参数比如最大关键帧数等。
     opt_flow_ptr =
         basalt::OpticalFlowFactory::getOpticalFlow(vio_config, calib);
 
+    // 保存groudtruth时间戳和对应的平移
     for (size_t i = 0; i < vio_dataset->get_gt_pose_data().size(); i++) {
       gt_t_ns.push_back(vio_dataset->get_gt_timestamps()[i]);
       gt_t_w_i.push_back(vio_dataset->get_gt_pose_data()[i].translation());
@@ -319,7 +322,7 @@ int main(int argc, char** argv) {
   {
     // 后端初始化，选择是否使用IMU
     vio = basalt::VioEstimatorFactory::getVioEstimator(
-        vio_config, calib, basalt::constants::g, use_imu, use_double);
+        vio_config, calib, basalt::constants::g, use_imu, use_double); // 创建后端估计器对象
     vio->initialize(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
 
     // 后端和前端的对接 （前端光流指针指向的输出队列指针保存的是后端估计器指向的视觉数据队列的地址）

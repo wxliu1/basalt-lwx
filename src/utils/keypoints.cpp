@@ -158,6 +158,9 @@ void detectKeypointsMapping(const basalt::Image<const uint16_t>& img_raw,
   }
 }
 
+// @PATCH_SIZE: grid的size
+// @num_points_cell: 默认为1，即每个cell一个点
+// @current_points: 表示在当前帧上追踪到的特征点
 void detectKeypoints(
     const basalt::Image<const uint16_t>& img_raw, KeypointsData& kd,
     int PATCH_SIZE, int num_points_cell,
@@ -168,7 +171,9 @@ void detectKeypoints(
   kd.corner_angles.clear();
   kd.corner_descriptors.clear();
 
-  // 提取的特征点具有中心对称
+  // 提取的特征点具有中心对称，即提取的特征点均匀分布在图像的中间, 意味着不能被PATCH_SIZE整除时，边边角角的地方就不会拿来选点
+  // 比如对于PATCH_SIZE=50，640 * 480的图像来说x_start=20, x_stop=570, y_start=15, y_stop=415
+  // 那么选的点的范围是：coloumn pixel ∈ [20, 620]，row pixel ∈ [15, 465].
   const size_t x_start = (img_raw.w % PATCH_SIZE) / 2;
   const size_t x_stop = x_start + PATCH_SIZE * (img_raw.w / PATCH_SIZE - 1);
 
@@ -178,11 +183,11 @@ void detectKeypoints(
   //  std::cerr << "x_start " << x_start << " x_stop " << x_stop << std::endl;
   //  std::cerr << "y_start " << y_start << " y_stop " << y_stop << std::endl;
 
-  // 指定每个栅格的大小
+  // 计算cell的总个数， cell按照矩阵的方式排列：e.g. 480 / 80 + 1, 640 / 80 + 1
   Eigen::MatrixXi cells;
   cells.setZero(img_raw.h / PATCH_SIZE + 1, img_raw.w / PATCH_SIZE + 1);
 
-  // 将已拥有的特征点放入到栅格cell中
+  // 统计已拥有的特征点在对应栅格cell中出现的个数
   for (const Eigen::Vector2d& p : current_points) {
     if (p[0] >= x_start && p[1] >= y_start && p[0] < x_stop + PATCH_SIZE &&
         p[1] < y_stop + PATCH_SIZE) {
@@ -215,12 +220,23 @@ void detectKeypoints(
 
       int points_added = 0;
       int threshold = 40;
-      // 每个cell 提取一定数量的特征点，闯值逐渐减低的
+      // 每个cell 提取一定数量的特征点，阈值逐渐减低的
       while (points_added < num_points_cell && threshold >= 5) {
         std::vector<cv::KeyPoint> points;
-        cv::FAST(subImg, points, threshold);
+        cv::FAST(subImg, points, threshold); // 对每一个grid提取一定数量的FAST角点
+        // 以下是关于FAST角点的一些分析：
+        // FAST算法将要检测的像素作为圆心，当具有固定半径的圆上的其他像素与圆心的像素之间的灰度差足够大时，该点被认为是角点。
+        // 然而，FAST角点不具有方向和尺度信息，它们不具有旋转和尺度不变性。
+        // 2012年，Rublee等人（2012）提出了基于FAST角点和BRIEF描述符的定向FAST和旋转BRIEF（ORB）算法。
+        // 该算法首先在图像上构建图像金字塔，然后检测FAST关键点并计算关键点的特征向量。
+        // ORB的描述符采用了二进制字符串特征BRIEF描述符的快速计算速度（Michael等人，2010），
+        // 因此ORB计算速度比具有实时特征检测的fast算法更快。此外ORB受噪声影响较小，具有良好的旋转不变性和尺度不变性，可应用于实时SLAM系统。
+        // 2016年，Chien等人（2016）比较并评估了用于VO应用的SIFT、SURF和ORB特征提取算法。
+        // 通过对KITTI数据集的大量测试（Geiger等人，2013），可以得出结论，SIFT在提取特征方面最准确，而ORB的计算量较小。
+        // 因此，作为计算能力有限的嵌入式计算机，ORB方法被认为更适合自动驾驶车辆的应用。
+        // ORB描述子，或者说基于ORB的特征点，是目前最好的选择了。
 
-        // 按照特征响应强度排序
+        // 按照特征响应强度排序，避免角点集中（扎堆）的问题。
         std::sort(points.begin(), points.end(),
                   [](const cv::KeyPoint& a, const cv::KeyPoint& b) -> bool {
                     return a.response > b.response;
@@ -239,7 +255,7 @@ void detectKeypoints(
             points_added++;
           }
 
-        // 如果没有满足数量要求，降低闻值
+        // 如果没有满足数量要求，降低阈值
         threshold /= 2;
       }
     }

@@ -52,25 +52,31 @@ namespace basalt {
 using KeypointId = size_t;
 
 struct OpticalFlowInput {
-  using Ptr = std::shared_ptr<OpticalFlowInput>;
+  using Ptr = std::shared_ptr<OpticalFlowInput>; // 定义ptr类型
 
-  int64_t t_ns; // 用于存放时间戳
+  int64_t t_ns; // 用于存放图像的时间戳
   std::vector<ImageData> img_data; // 存放双目图像， 0-左目，1-右目
 };
 
 struct OpticalFlowResult {
-  using Ptr = std::shared_ptr<OpticalFlowResult>;
+  using Ptr = std::shared_ptr<OpticalFlowResult>; // 定义指针
 
-  int64_t t_ns; //用于存放时间戳
+/*
+  AffineCompact（紧凑仿射变换）：
+  AffineCompact模式与Affine模式类似，但它只表示平移、旋转和缩放，不包括错切变换。这使得该模式下的变换更加紧凑，适用于不涉及错切的情况。
+*/
+
+  int64_t t_ns; // 图像的时间戳
   // 用vector存放双目的观测，0-左目，1-右目
   // 同时每一个相机的观测用map存储
   // KeypointId特征点ID号,AffineCompact2f特征点在图像上的像素位置，Eigen存放用于描述二维上的平移和旋转
   std::vector<Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f>>
-      observations;
+      observations; // vector的key是相机  value是map map的 key是特征点id value是特征点的平移和旋转参数
 
+  // key是相机 value是map map的key是特征点id value是特征点放在哪层金字塔
   std::vector<std::map<KeypointId, size_t>> pyramid_levels;
 
-  OpticalFlowInput::Ptr input_images;
+  OpticalFlowInput::Ptr input_images; // 输入的数据
 };
 
 class OpticalFlowBase {

@@ -92,16 +92,16 @@ using FeatureHash = std::bitset<FEATURE_HASH_MAX_SIZE>;
 using HashBowVector = std::vector<std::pair<FeatureHash, double>>;
 
 /// keypoint positions and descriptors for an image
-struct KeypointsData {
+struct KeypointsData { // 典型的SOA(数组结构体), 属于DOP（面向数据编程）的一种数据布局方式，便于SIMD优化
   /// collection of 2d corner points (indexed by FeatureId)
   std::vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>>
-      corners;
+      corners; // 存放角点的vector集合, 每个元素是Eigen::Vector2d类型。
   /// collection of feature orientation (in radian) with same index as `corners`
   /// (indexed by FeatureId)
-  std::vector<double> corner_angles;
+  std::vector<double> corner_angles; // 特征方向（以弧度的方式）的集合
   /// collection of feature descriptors with same index as `corners` (indexed by
   /// FeatureId)
-  std::vector<std::bitset<256>> corner_descriptors;
+  std::vector<std::bitset<256>> corner_descriptors; // 特征描述符的集合
 
   Eigen::aligned_vector<Eigen::Vector4d> corners_3d;
 

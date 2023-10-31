@@ -77,7 +77,7 @@ class ManagedImagePyr {
     for (size_t i = 0; i < num_levels; i++) {
       const Image<const T> l = lvl(i);
       Image<T> lp1 = lvl_internal(i + 1);
-      subsample(l, lp1);
+      subsample(l, lp1); // 下采样
     }
   }
 
@@ -104,21 +104,21 @@ class ManagedImagePyr {
     static_assert(std::is_same<T, uint16_t>::value ||
                   std::is_same<T, uint8_t>::value);
 
-    constexpr int kernel[5] = {1, 4, 6, 4, 1};
+    constexpr int kernel[5] = {1, 4, 6, 4, 1}; // 5的卷积核
 
     // accumulator
-    ManagedImage<int> tmp(img_sub.h, img.w);
+    ManagedImage<int> tmp(img_sub.h, img.w); // 中间变量 高度缩小一半  宽度先不变
 
     // Vertical convolution
     {
-      for (int r = 0; r < int(img_sub.h); r++) {
+      for (int r = 0; r < int(img_sub.h); r++) { // 遍历高度
         const T* row_m2 = img.RowPtr(std::abs(2 * r - 2));
         const T* row_m1 = img.RowPtr(std::abs(2 * r - 1));
         const T* row = img.RowPtr(2 * r);
         const T* row_p1 = img.RowPtr(border101(2 * r + 1, img.h));
         const T* row_p2 = img.RowPtr(border101(2 * r + 2, img.h));
 
-        for (int c = 0; c < int(img.w); c++) {
+        for (int c = 0; c < int(img.w); c++) { // 遍历宽度
           tmp(r, c) = kernel[0] * int(row_m2[c]) + kernel[1] * int(row_m1[c]) +
                       kernel[2] * int(row[c]) + kernel[3] * int(row_p1[c]) +
                       kernel[4] * int(row_p2[c]);
@@ -126,7 +126,7 @@ class ManagedImagePyr {
       }
     }
 
-    // Horizontal convolution
+    // Horizontal convolution 再垂直搞一遍这个事情就成了 这样的运算是等效的
     {
       for (int c = 0; c < int(img_sub.w); c++) {
         const int* row_m2 = tmp.RowPtr(std::abs(2 * c - 2));
@@ -139,8 +139,8 @@ class ManagedImagePyr {
           int val_int = kernel[0] * row_m2[r] + kernel[1] * row_m1[r] +
                         kernel[2] * row[r] + kernel[3] * row_p1[r] +
                         kernel[4] * row_p2[r];
-          T val = ((val_int + (1 << 7)) >> 8);
-          img_sub(c, r) = val;
+          T val = ((val_int + (1 << 7)) >> 8); // 这个位置是除以256   这里采用四舍五入的思想了
+          img_sub(c, r) = val; // 最后再赋值一下
         }
       }
     }
@@ -185,10 +185,19 @@ class ManagedImagePyr {
   /// @param lvl level to return
   /// @return image of with the pyramid level
   inline Image<T> lvl_internal(size_t lvl) {
-    size_t x = (lvl == 0) ? 0 : orig_w;
+    // 这里的x和y是金字塔中的每层图像在一整幅图像中的位置，即表示缩放后的图像块所在的位置；
+    // 换句话说是将金字塔所有层的图像拼接在同一个图像里面。
+    size_t x = (lvl == 0) ? 0 : orig_w; // orig_w = 第0层图像的宽度
     size_t y = (lvl <= 1) ? 0 : (image.h - (image.h >> (lvl - 1)));
-    size_t width = (orig_w >> lvl);
-    size_t height = (image.h >> lvl);
+    size_t width = (orig_w >> lvl); // 缩放
+    size_t height = (image.h >> lvl); // 缩放
+
+    // basalt的构建图像金字塔是自己实现的，其形成的图像金字塔图像数据是保存在同一张图里的
+    //（在默认的配置参数中，basalt默认图像金字塔构建三层-事实上他构建多了就容易出问题，会超出图像的索引，所以这个参数不能随便调整）。
+    // 关于索引：
+    // x = 0, orig_w， orig_w
+    // y = 0， 0， h/2
+    // 因此这里可以看到索引是与图像进行对应上的
 
     return image.SubImage(x, y, width, height);
   }

@@ -75,7 +75,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
                           const basalt::Calibration<double>& calib)
       : t_ns(-1), frame_counter(0), last_keypoint_id(0), config(config) {
 
-    // 设置输入队列大小    
+    // 设置输入队列大小: 输入队列设置容量  
     input_queue.set_capacity(10);
 
     // 相机内参
@@ -84,7 +84,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     // 转换pattern数据类型
     patch_coord = PatchT::pattern2.template cast<float>();
 
-    // 如果视觉前端为双目，构建基础矩阵
+    // 如果视觉前端为双目，构建基础矩阵 // 如果是双目相机 计算两者的E矩阵
     if (calib.intrinsics.size() > 1) {
       Eigen::Matrix4d Ed;
       Sophus::SE3d T_i_j = calib.T_i_c[0].inverse() * calib.T_i_c[1];
@@ -102,6 +102,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   void processingLoop() {
     OpticalFlowInput::Ptr input_ptr;
 
+    // processingLoop循环处理部分：拿到一帧的数据指针、处理一帧processFrame
     while (true) {
       input_queue.pop(input_ptr); // 从输入流获得图片
 
@@ -116,6 +117,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     }
   }
 
+  // processFrame这里进行图像金字塔创建+跟踪+剔除特征点
   void processFrame(int64_t curr_t_ns, OpticalFlowInput::Ptr& new_img_vec) {
     
     // 如果图像的数据为空（指针）直接返回
@@ -123,7 +125,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       if (!v.img.get()) return;
     }
     
-    if (t_ns < 0) {
+    if (t_ns < 0) { // 第一次进入: 第一次处理帧时，t_ns == -1.
       // 开始初始化
 
       t_ns = curr_t_ns;
@@ -138,13 +140,14 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       // step 2.1 金字塔的个数对应相机的个数
       pyramid->resize(calib.intrinsics.size());
 
-      // step2.2 多线程执行图像金子塔的构建
+      // step2.2 并行构建金字塔：多线程执行图像金子塔的构建
       // 参数1.指定参数范围 参数2匿名的函数体
-      tbb::parallel_for(tbb::blocked_range<size_t>(0, calib.intrinsics.size()),
-                        [&](const tbb::blocked_range<size_t>& r) {
+      tbb::parallel_for(tbb::blocked_range<size_t>(0, calib.intrinsics.size()), // 迭代范围用数学区间表示是[0, 2)
+                        [&](const tbb::blocked_range<size_t>& r) { // [&]表示以引用方式捕获外部作用域的所有变量, [&]表示外部参数传引用，如果没有const修饰时可修改值。
                           for (size_t i = r.begin(); i != r.end(); ++i) {
                             //遍历每一个相机，构建图像金字塔
                             //参数1 : 原始图片, 参数2 : 建金字塔层数
+                            // basalt的构建图像金字塔是自己实现的
                             pyramid->at(i).setFromImage(
                                 *new_img_vec->img_data[i].img,
                                 config.optical_flow_levels);
@@ -160,17 +163,22 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       filterPoints();
       // 初始化结束
 
-    } else {
+    } else { // 非第一次进入
 
       // 开始追踪
+      // 追踪简要流程：
+      // 对每个特征点在金字塔高层级到低层级进行追踪(由粗到精)
+      // 追踪当前帧的所有特征点
+      // 反向追踪上的才算真正成功的
+
       // step 1: 更新时间
-      t_ns = curr_t_ns;
+      t_ns = curr_t_ns; // 拷贝时间戳
 
       // step 2.1: 更新last image的金子塔
-      old_pyramid = pyramid;
+      old_pyramid = pyramid; // 保存上一图像的金字塔
 
       // step2.2: 构造current image 的金宇塔
-      pyramid.reset(new std::vector<basalt::ManagedImagePyr<uint16_t>>);
+      pyramid.reset(new std::vector<basalt::ManagedImagePyr<uint16_t>>); // 重新设置新指针
       pyramid->resize(calib.intrinsics.size());
       tbb::parallel_for(tbb::blocked_range<size_t>(0, calib.intrinsics.size()),
                         [&](const tbb::blocked_range<size_t>& r) {
@@ -182,12 +190,12 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
                         });
 
       // step3: 追踪特征点
-      OpticalFlowResult::Ptr new_transforms;
+      OpticalFlowResult::Ptr new_transforms; // 新的返回参数
       new_transforms.reset(new OpticalFlowResult);
       new_transforms->observations.resize(calib.intrinsics.size());
       new_transforms->t_ns = t_ns;
 
-      // lwx last left to current left , lest right to current right
+      // lwx last left to current left , last right to current right // 对当前帧的和上一帧进行跟踪（左目与左目 右目与右目）
       for (size_t i = 0; i < calib.intrinsics.size(); i++) {
         trackPoints(old_pyramid->at(i), pyramid->at(i),
                     transforms->observations[i],
@@ -195,31 +203,35 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       }
 
       // step 4: save track result
-      transforms = new_transforms;
+      transforms = new_transforms; // 这里transforms重新赋值追踪之后的特征点
       transforms->input_images = new_img_vec;
 
-      // step5: add feature
-      addPoints();
-      // step6: 如果是双目相机，使用对极几何剔除外点
-      filterPoints();
+      // step 5: add feature 增加点
+      addPoints(); // 追踪之后，继续提取新的点
+      // step 6: 如果是双目相机，使用对极几何剔除外点
+      filterPoints(); // 使用双目E剔除点
       // 追踪结束
     }
 
     // 判断是否定义了输出队列,如果输出队列不为空，将结果push到输出队列
     // 类似vins指定频率发布图像，防止imu相比视觉频率低导致相邻帧没有imu数据，使图像跳帧播放
     if (output_queue && frame_counter % config.optical_flow_skip_frames == 0) {
-      output_queue->push(transforms);
+      output_queue->push(transforms); // 光流结果推送到输出队列里 //- 其实是将光流法追踪的结果推送到了后端状态估计器
     }
 
+    // 跟踪数量增加
     frame_counter++; // 图像的数目累加
   }
 
+  // trackPoints函数是用来追踪两幅图像的特征点的，输入是 金字塔1, 金字塔2, 1中的点, 输出的是2追踪1的点（即1中的点，被经过追踪之后，得到在图像2中的像素坐标）
+  // 这里的1指的是上一帧，那么2就是当前帧；或者1指的是当前帧的左目， 那么2指的是当前帧的右目
   void trackPoints(const basalt::ManagedImagePyr<uint16_t>& pyr_1,
                    const basalt::ManagedImagePyr<uint16_t>& pyr_2,
                    const Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f>&
-                       transform_map_1,
+                       transform_map_1, // 1中的点
                    Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f>&
-                       transform_map_2) const {
+                       transform_map_2) const { // 用于返回追踪到的点
+    // num_points为1中点的个数
     size_t num_points = transform_map_1.size();
 
     std::vector<KeypointId> ids;
@@ -230,8 +242,8 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
     // 1.特征点类型转换map->vector
     for (const auto& kv : transform_map_1) {
-      ids.push_back(kv.first);
-      init_vec.push_back(kv.second);
+      ids.push_back(kv.first); // 1中点的id
+      init_vec.push_back(kv.second); // 1中点的信息（在2d图像上的旋转和平移信息）
     }
 
     // 定义输出结果的容器
@@ -242,19 +254,19 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     auto compute_func = [&](const tbb::blocked_range<size_t>& range) {
       
       // 遍历每一个特征点
-      for (size_t r = range.begin(); r != range.end(); ++r) {
-        const KeypointId id = ids[r];
+      for (size_t r = range.begin(); r != range.end(); ++r) { // r表示点在vector容器中的序号
+        const KeypointId id = ids[r]; // 得到点的id
 
-        // 取出特征点在参考顿中的像素位置transform 1
+        // 取出特征点在参考帧或者左目中的像素位置transform_1
         const Eigen::AffineCompact2f& transform_1 = init_vec[r];
-        //用transform 1 初始化特征点在当前顿的位置
+        //用transform_1 初始化特征点在当前帧或者右目的位置
         Eigen::AffineCompact2f transform_2 = transform_1;
 
         // 使用特征点 进行光流正向追踪
         bool valid = trackPoint(pyr_1, pyr_2, transform_1, transform_2);
 
         if (valid) {
-          // 如果正向追踪合法，使用反向追踪，由当前准追踪参考帧
+          // 如果正向追踪合法，使用反向追踪，由当前帧追踪参考帧
           Eigen::AffineCompact2f transform_1_recovered = transform_2;
 
           valid = trackPoint(pyr_2, pyr_1, transform_2, transform_1_recovered);
@@ -273,9 +285,9 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       }
     };
 
-    tbb::blocked_range<size_t> range(0, num_points);
+    tbb::blocked_range<size_t> range(0, num_points); // 定义遍历范围，用数学半开半闭区间表示为[0, num_points).
 
-    // 并行追踪特征点
+    // 并行（计算）追踪特征点，SPMD（Single Program/Multiple Data 单一的过程中，多个数据或单个程序，多数据）
     tbb::parallel_for(range, compute_func);
     // compute_func(range);
 
@@ -283,25 +295,63 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     transform_map_2.insert(result.begin(), result.end());
   }
 
+  // trackPoint函数是追踪一个点
   inline bool trackPoint(const basalt::ManagedImagePyr<uint16_t>& old_pyr,
                          const basalt::ManagedImagePyr<uint16_t>& pyr,
                          const Eigen::AffineCompact2f& old_transform,
                          Eigen::AffineCompact2f& transform) const {
     bool patch_valid = true;
 
-    transform.linear().setIdentity();
+    // AffineCompact2f有旋转和平移成员
+    // 投影或仿射变换矩阵，参见Transform类。泛型仿射变换用Transform类表示，其实质是（Dim+1）^2的矩阵
+    transform.linear().setIdentity(); //? 这里是将transform(本质是一个矩阵，包含旋转和平移)设为单位矩阵吗，应该仅仅是旋转部分设为单位阵
+
+    /*
+     * 类`Transform`表示使用齐次运算的仿射变换或投影变换。 
+     *
+     * Transform::linear()直接返回变换矩阵中的线性部分it returns the linear part of the transformation.
+     * Transform::rotation()返回线性部分中的旋转分量。
+     * 但由于线性部分包含 not only rotation but also reflection, shear and scaling
+     *
+     * Eigen::Transform::linear()用法的补充说明：
+     * 例如，一个仿射变换'A'是由一个线性部分'L'和一个平移't'组成的，这样由'A'变换一个点'p'等价于：p' = L * p + t
+     * 
+     *                 | L   t |
+     * 所以变换矩阵 T = |       |    的Linear部分即为左上角的Eigen::Matrix3d旋转矩阵。
+     *                 | 0   1 |
+     * 
+     * 代码中另外一个表示矩阵的方式：
+     * [L, t]
+     * [0, 1]
+     * 
+     * 对于本程序来说，Eigen::AffineCompact2f其实就是 Eigen::Transform 的别名，
+     * 其本质是3*3的矩阵，左上角2*2 用来表示旋转， 右边2*1表示平移，
+     * 平移最根本的目的，在这里是为了表示点在二维像素平面上的坐标。 
+     * 
+     * 用齐次向量表示：
+     * [p'] = [L t] * [p] = A * [p]
+     * [1 ]   [0 1]   [1]       [1]
+     * 
+     * with:
+     * 
+     * A = [L t]
+     *     [0 1]
+     * 
+     * 所以线性部分对应于齐次矩阵表示的左上角。它对应于旋转、缩放和剪切的混合物。
+     * 
+     */
 
     // 从金字塔最顶层到最底层迭代优化
     for (int level = config.optical_flow_levels; level >= 0 && patch_valid;
          level--) {
       
       // 计算尺度
-      const Scalar scale = 1 << level;
+      const Scalar scale = 1 << level; // 相当于 scale = 2 ^ level
 
-      transform.translation() /= scale;
+      transform.translation() /= scale; // 像素坐标，缩放到对应层
 
       // 获得patch在对应层初始位置
-      PatchT p(old_pyr.lvl(level), old_transform.translation() / scale);
+      PatchT p(old_pyr.lvl(level), old_transform.translation() / scale); // 参考帧的金字塔对应层，以及对应的坐标
 
       patch_valid &= p.valid;
       if (patch_valid) {
@@ -339,7 +389,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
       if (patch_valid) {
         // 计算增量，扰动更新
-        const Vector3 inc = -dp.H_se2_inv_J_se2_T * res;
+        const Vector3 inc = -dp.H_se2_inv_J_se2_T * res; // 求增量Δx = - H^-1 * J^T * r
 
         // avoid NaN in increment (leads to SE2::exp crashing)
         patch_valid &= inc.array().isFinite().all();
@@ -348,11 +398,11 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
         patch_valid &= inc.template lpNorm<Eigen::Infinity>() < 1e6;
 
         if (patch_valid) {
-          transform *= SE2::exp(inc).matrix();
+          transform *= SE2::exp(inc).matrix(); // 更新状态量
 
           const int filter_margin = 2;
 
-          // 判断更新后是否在范围内
+          // 判断更新后的像素坐标是否在图像img_2范围内
           patch_valid &= img_2.InBounds(transform.translation(), filter_margin);
         }
       }
@@ -362,17 +412,19 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   }
 
   void addPoints() {
+
+    // step 1 在当前帧第0层检测特征(划分网格，在网格中只保存响应比较好的和以前追踪的)
     Eigen::aligned_vector<Eigen::Vector2d> pts0;
 
-    // 将以前追踪到的点放入到pts0,进行零时保存
-    // 原先使用map存放特征点，改为vector
-    for (const auto& kv : transforms->observations.at(0)) {
-      pts0.emplace_back(kv.second.translation().cast<double>());
+    // 将以前追踪到的点放入到pts0,进行临时保存
+    // kv为Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f>类型的容器中的一个元素（键值对）
+    for (const auto& kv : transforms->observations.at(0)) { // at(0)表示取左目的观测数据
+      pts0.emplace_back(kv.second.translation().cast<double>()); // 取2d图像的平移部分，即二维像素坐标
     }
 
-    KeypointsData kd;
+    KeypointsData kd; // 用来存储新检测到的特征点
 
-    // 每个cell的大小是50 ， 每个cell提取1个特征点
+    // 每个cell的大小默认是50 ， 每个cell提取1个特征点
     // 检测特征点
     // 参数1.图像 参数2.输出特征点容器 参数3,制定cell大小 参数4,每个cell多少特征点 参数5.成功追踪的特征点传递进去
     detectKeypoints(pyramid->at(0).lvl(0), kd,
@@ -381,24 +433,26 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f> new_poses0,
         new_poses1;
 
+    // step 2 遍历特征点, 每个特征点利用特征点 初始化光流金字塔的初值
     // 添加新的特征点的观测值
     for (size_t i = 0; i < kd.corners.size(); i++) {
       Eigen::AffineCompact2f transform;
       transform.setIdentity(); //旋转 设置为单位阵
-      transform.translation() = kd.corners[i].cast<Scalar>();
+      transform.translation() = kd.corners[i].cast<Scalar>(); // 角点坐标，保存到transform的平移部分
 
       // 特征点转换成输出结果的数据类型map
-      transforms->observations.at(0)[last_keypoint_id] = transform;
+      transforms->observations.at(0)[last_keypoint_id] = transform; // 键值对来存储特征点，类型为Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f>
       new_poses0[last_keypoint_id] = transform;
 
-      last_keypoint_id++; // last keypoint id 是一个全局变量
+      last_keypoint_id++; // last keypoint id 是一个类成员变量
     }
 
+    // step 3 如果是有双目的话，使用左目新提的点，进行左右目追踪。右目保留和左目追踪上的特征点
     //如果是双目相机,我们使用光流追踪算法，即计算Left image 提取的特征点在right image图像中的位置
     if (calib.intrinsics.size() > 1) {//相机内参是否大于1
       // 使用左目提取的特征点使用光流得到右目上特征点的位置
       trackPoints(pyramid->at(0), pyramid->at(1), new_poses0, new_poses1);
-      // 保存结果，因为为右目，因此保存到下标1中
+      // 保存结果，因为是右目的点，因此保存到下标1中
       for (const auto& kv : new_poses1) {
         transforms->observations.at(1).emplace(kv);
       }
@@ -441,7 +495,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
         const double epipolar_error =
             std::abs(p3d0[i].transpose() * E * p3d1[i]);
 
-        //如果距离大于判定闯值 则不合法
+        //如果距离大于判定阈值 则不合法
         if (epipolar_error > config.optical_flow_epipolar_error) {
           lm_to_remove.emplace(kpid[i]);
         }
@@ -468,9 +522,10 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   VioConfig config;
   basalt::Calibration<Scalar> calib;
 
-  OpticalFlowResult::Ptr transforms;
+  OpticalFlowResult::Ptr transforms; // 用于存放第一次提取的全新特征点，或者光流追踪之后的特征点加上提取的新点
   std::shared_ptr<std::vector<basalt::ManagedImagePyr<uint16_t>>> old_pyramid,
-      pyramid;
+      pyramid; // 智能指针指向vector，下标0，表示左目的金字塔，下标1表示右目的金字塔
+               // old_pyramid表示上一图像的金字塔，pyramid表示当前图像的金字塔
 
   Matrix4 E;
 

@@ -62,28 +62,28 @@ SqrtKeypointVoEstimator<Scalar_>::SqrtKeypointVoEstimator(
       frames_after_kf(0),
       initialized(false),
       config(config_),
-      lambda(config_.vio_lm_lambda_initial),
+      lambda(config_.vio_lm_lambda_initial), // LM法中的拉格朗日乘子λ
       min_lambda(config_.vio_lm_lambda_min),
       max_lambda(config_.vio_lm_lambda_max),
       lambda_vee(2) {
   obs_std_dev = Scalar(config.vio_obs_std_dev);
   huber_thresh = Scalar(config.vio_obs_huber_thresh);
-  calib = calib_.cast<Scalar>();
+  calib = calib_.cast<Scalar>(); // 包含内参、外参、分辨率等
 
-  // Setup marginalization
-  marg_data.is_sqrt = config.vio_sqrt_marg;
-  marg_data.H.setZero(POSE_SIZE, POSE_SIZE);
+  // Setup marginalization 边缘化设定
+  marg_data.is_sqrt = config.vio_sqrt_marg; // 默认配置项为true.
+  marg_data.H.setZero(POSE_SIZE, POSE_SIZE); // POSE_SIZE = 6
   marg_data.b.setZero(POSE_SIZE);
 
-  // Version without prior
+  // Version without prior 仅用于调式和日志输出的目的
   nullspace_marg_data.is_sqrt = marg_data.is_sqrt;
-  nullspace_marg_data.H.setZero(POSE_SIZE, POSE_SIZE);
-  nullspace_marg_data.b.setZero(POSE_SIZE);
+  nullspace_marg_data.H.setZero(POSE_SIZE, POSE_SIZE); // 6 * 6的H
+  nullspace_marg_data.b.setZero(POSE_SIZE); // 6 * 1的b
 
-  // prior on pose
+  // prior on pose 位姿先验
   if (marg_data.is_sqrt) {
     marg_data.H.diagonal().setConstant(
-        std::sqrt(Scalar(config.vio_init_pose_weight)));
+        std::sqrt(Scalar(config.vio_init_pose_weight))); // marg矩阵H的对角线设置为常量'初始位姿权重'，初始值为1e8
   } else {
     marg_data.H.diagonal().setConstant(Scalar(config.vio_init_pose_weight));
   }

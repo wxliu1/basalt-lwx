@@ -427,23 +427,24 @@ struct Image {
                   "for floating point result type");
 
     BASALT_BOUNDS_ASSERT(InBounds(x, y, 0));
-
+    // 下采样后的(int)
     int ix = x;
     int iy = y;
 
-    S dx = x - ix;
+    S dx = x - ix; // 小数的部分
     S dy = y - iy;
 
-    S ddx = S(1.0) - dx;
+    S ddx = S(1.0) - dx; // 负的小数字部分
     S ddy = S(1.0) - dy;
 
+    // 双线性插值
     return ddx * ddy * (*this)(ix, iy) + ddx * dy * (*this)(ix, iy + 1) +
            dx * ddy * (*this)(ix + 1, iy) + dx * dy * (*this)(ix + 1, iy + 1);
   }
 
   // for documentation see the alternative overload above
   template <typename S>
-  inline Eigen::Matrix<S, 3, 1> interpGrad(S x, S y) const {
+  inline Eigen::Matrix<S, 3, 1> interpGrad(S x, S y) const {// 图像梯度的计算
     static_assert(std::is_floating_point_v<S>,
                   "interpolation / gradient only makes sense "
                   "for floating point result type");
@@ -466,6 +467,7 @@ struct Image {
     const T& px0y1 = (*this)(ix, iy + 1);
     const T& px1y1 = (*this)(ix + 1, iy + 1);
 
+    // 双线性插值后的图像灰度（强度）值
     res[0] = ddx * ddy * px0y0 + ddx * dy * px0y1 + dx * ddy * px1y0 +
              dx * dy * px1y1;
 
@@ -481,6 +483,7 @@ struct Image {
     S res_px = ddx * ddy * px1y0 + ddx * dy * px1y1 + dx * ddy * px2y0 +
                dx * dy * px2y1;
 
+    // x 方向梯度
     res[1] = S(0.5) * (res_px - res_mx);
 
     const T& px0ym1 = (*this)(ix, iy - 1);
@@ -495,6 +498,7 @@ struct Image {
     S res_py = ddx * ddy * px0y1 + ddx * dy * px0y2 + dx * ddy * px1y1 +
                dx * dy * px1y2;
 
+    // y 方向梯度
     res[2] = S(0.5) * (res_py - res_my);
 
     return res;
@@ -723,7 +727,7 @@ struct Image {
   BASALT_HOST_DEVICE inline bool InBounds(float x, float y,
                                           float border) const {
     return border <= x && x < (w - border - 1) && border <= y &&
-           y < (h - border - 1);
+           y < (h - border - 1); // 特点是有4个整型的像素点邻居是内点
   }
 
   /// In bounds check for integer or floating point coordinates with given

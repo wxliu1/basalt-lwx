@@ -134,7 +134,7 @@ struct Pattern52 {
       sizeof(pattern_raw) / (2 * sizeof(Scalar));
 
   typedef Eigen::Matrix<Scalar, 2, PATTERN_SIZE> Matrix2P;
-  static const Matrix2P pattern2;
+  static const Matrix2P pattern2; // pattern2表示的是2*52的矩阵
 };
 
 template <class Scalar>
@@ -144,16 +144,16 @@ const typename Pattern52<Scalar>::Matrix2P Pattern52<Scalar>::pattern2 =
 
 // Same as Pattern52 but twice smaller
 template <class Scalar>
-struct Pattern51 {
+struct Pattern51 { // Pattern51跟Pattern52一样，只是patch只有一半那么小。换句话说patch点个数一样多，只是点更紧密
   static constexpr int PATTERN_SIZE = Pattern52<Scalar>::PATTERN_SIZE;
 
   typedef Eigen::Matrix<Scalar, 2, PATTERN_SIZE> Matrix2P;
-  static const Matrix2P pattern2;
+  static const Matrix2P pattern2; // pattern2表示的是2*52的矩阵
 };
 
 template <class Scalar>
 const typename Pattern51<Scalar>::Matrix2P Pattern51<Scalar>::pattern2 =
-    0.5 * Pattern52<Scalar>::pattern2;
+    0.5 * Pattern52<Scalar>::pattern2; // 偏移量只有0.5倍
 
 // Same as Pattern52 but 0.75 smaller
 template <class Scalar>
