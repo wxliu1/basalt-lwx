@@ -124,14 +124,15 @@ void BundleAdjustmentBase<Scalar>::optimize_single_frame_pose(
           calib.intrinsics[cam_id].variant);
     }
 
-    // Add small damping for GN
+    // Add small damping for GN // 为GN添加小阻尼
     constexpr Scalar lambda = 1e-6;
     Vec6 diag = Ht.diagonal();
-    diag *= lambda;
-    Ht.diagonal().array() += diag.array().max(lambda);
+    diag *= lambda; // Ht的对角线的元素组成的向量，乘以lambda.
+    // 对于eigen的Array, 最小/大值 min()/max(): 取两个给定Array对应位置的最小（大）值作为结果Array对应位置的值
+    Ht.diagonal().array() += diag.array().max(lambda); // Ht的对角线的元素加上不小于lambda的数
 
     // std::cout << "pose opt error " << error << std::endl;
-    Vec6 inc = -Ht.ldlt().solve(bt);
+    Vec6 inc = -Ht.ldlt().solve(bt); // LDLT分解来求解方程 H = LDL^T
     state_t.applyInc(inc);
   }
   // std::cout << "=============================" << std::endl;

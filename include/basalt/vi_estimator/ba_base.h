@@ -95,6 +95,7 @@ class BundleAdjustmentBase {
   /// Triangulates the point and returns homogenous representation. First 3
   /// components - unit-length direction vector. Last component inverse
   /// distance.
+  // 对点进行三角测量并返回齐次表示，前3维是单位长度方向向量，最后一维是逆深度
   template <class Derived>
   static Eigen::Matrix<typename Derived::Scalar, 4, 1> triangulate(
       const Eigen::MatrixBase<Derived>& f0,
@@ -154,13 +155,13 @@ class BundleAdjustmentBase {
   }
 
   Eigen::aligned_map<int64_t, PoseVelBiasStateWithLin<Scalar>> frame_states;
-  Eigen::aligned_map<int64_t, PoseStateWithLin<Scalar>> frame_poses;
+  Eigen::aligned_map<int64_t, PoseStateWithLin<Scalar>> frame_poses; // 保存帧的时间戳，位姿
 
   // Point management
   LandmarkDatabase<Scalar> lmdb;
 
-  Scalar obs_std_dev;
-  Scalar huber_thresh;
+  Scalar obs_std_dev; // 默认0.5
+  Scalar huber_thresh; // 默认1.0
 
   basalt::Calibration<Scalar> calib;
 };

@@ -219,7 +219,7 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
 
   // Input
 
-  Eigen::aligned_map<int64_t, OpticalFlowResult::Ptr> prev_opt_flow_res;
+  Eigen::aligned_map<int64_t, OpticalFlowResult::Ptr> prev_opt_flow_res; // 这里面存储的应该是滑窗里面所有关键帧的光流结果
 
   std::map<int64_t, int> num_points_kf;
 

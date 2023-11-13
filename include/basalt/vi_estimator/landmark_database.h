@@ -59,13 +59,14 @@ struct Keypoint {
   using MapIter = typename ObsMap::iterator;
 
   // 3D position parameters
-  Vec2 direction;
-  Scalar inv_dist;
+  Vec2 direction; //  在赤平面的投影
+  Scalar inv_dist; // 逆深度
 
   // Observations
-  TimeCamId host_kf_id;
-  ObsMap obs;
+  TimeCamId host_kf_id; // 主帧id
+  ObsMap obs; // 观测map(key是观测的timestamp & camera id, value是 赤平面向量)
 
+  //? backup和restore函数用于将数据进行备份和恢复(这里可能是为fej准备的)。
   inline void backup() {
     backup_direction = direction;
     backup_inv_dist = inv_dist;
@@ -84,7 +85,7 @@ struct Keypoint {
 };
 
 template <class Scalar_>
-class LandmarkDatabase {
+class LandmarkDatabase { // 特征(路标)点数据库
  public:
   using Scalar = Scalar_;
 
@@ -145,10 +146,10 @@ class LandmarkDatabase {
   typename Keypoint<Scalar>::MapIter removeLandmarkObservationHelper(
       MapIter it, typename Keypoint<Scalar>::MapIter it2);
 
-  Eigen::aligned_unordered_map<KeypointId, Keypoint<Scalar>> kpts;
+  Eigen::aligned_unordered_map<KeypointId, Keypoint<Scalar>> kpts; // key是特征点id, value是特征点 
 
   std::unordered_map<TimeCamId, std::map<TimeCamId, std::set<KeypointId>>>
-      observations;
+      observations; // key是时间戳+相机id value是 map 这个map是 key是时间戳+相机id value是特征点id的集合
 
   static constexpr int min_num_obs = 2;
 };

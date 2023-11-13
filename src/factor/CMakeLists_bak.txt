@@ -1,0 +1,20 @@
+# from vins
+
+#MESSAGE(STATUS "aaaa This is a factor dir. ")
+
+cc_library(
+  NAME inte_base #integration_base
+  HDRS "integration_base.h"
+  DEPS Eigen3::Eigen Ceres::ceres
+  INTERFACE)
+  
+cc_library(
+  NAME imu_factor
+  HDRS "imu_factor.h"
+  DEPS Eigen3::Eigen Ceres::ceres
+  INTERFACE)
+  
+cc_library(
+  NAME pose_local_parameterization
+  SRCS "pose_local_parameterization.cpp"
+  DEPS Eigen3::Eigen Ceres::ceres) 

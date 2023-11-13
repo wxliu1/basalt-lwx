@@ -73,10 +73,24 @@ class VioEstimatorBase {
     finished = false;
   }
 
+  /*
+   * 原子操作std::atomic, 用于多线程并发需要同步时，保护单个变量
+   * 为何已经有互斥量了，还要引入std::atomic呢，这是因为互斥量保护的数据范围比较大，我们期望更小范围的保护。
+   * 并且当共享数据为一个变量时，原子操作std::atomic效率更高。
+   *
+   */
+
   std::atomic<int64_t> last_processed_t_ns;
   std::atomic<bool> finished;
 
-  tbb::concurrent_bounded_queue<OpticalFlowResult::Ptr> vision_data_queue;
+  /*
+   * tbb::concurrent_bounded_queue 并发队列，bounded指示该队列是有界限的，不能无限扩张
+   * 一般普通的容器，比如vector或者queue，无法保证线程安全，普通的数据结构实现多线程是不安全的，利用tbb的数据结构实现线程安全
+   * 因此在使用多线程并发运行时，对这些容器的操作（比如添加、删除等）需要用tbb自带的
+   *
+   */
+
+  tbb::concurrent_bounded_queue<OpticalFlowResult::Ptr> vision_data_queue; // 视觉数据并发队列
   tbb::concurrent_bounded_queue<ImuData<double>::Ptr> imu_data_queue;
 
   tbb::concurrent_bounded_queue<PoseVelBiasState<double>::Ptr>*
@@ -113,7 +127,7 @@ class VioEstimatorBase {
 
   virtual Sophus::SE3d getT_w_i_init() = 0;
 
-  // Legacy functions. Should not be used in the new code.
+  // Legacy functions. Should not be used in the new code. 遗留函数。不应该在新代码中使用
   virtual void setMaxStates(size_t val) = 0;
   virtual void setMaxKfs(size_t val) = 0;
 

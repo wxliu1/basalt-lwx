@@ -217,6 +217,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     // 类似vins指定频率发布图像，防止imu相比视觉频率低导致相邻帧没有imu数据，使图像跳帧播放
     if (output_queue && frame_counter % config.optical_flow_skip_frames == 0) {
       output_queue->push(transforms); // 光流结果推送到输出队列里 //- 其实是将光流法追踪的结果推送到了后端状态估计器
+      // 这里补充说一点，basalt的前端相当于生产者，生产者线程向队列中添加特征；basalt的后端相当于消费者，消费者线程从队列中获取特征进行处理。
     }
 
     // 跟踪数量增加

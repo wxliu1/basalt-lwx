@@ -58,7 +58,7 @@ namespace basalt {
 template <class Scalar_>
 SqrtKeypointVoEstimator<Scalar_>::SqrtKeypointVoEstimator(
     const basalt::Calibration<double>& calib_, const VioConfig& config_)
-    : take_kf(true),
+    : take_kf(true), // 表明第一帧为关键帧
       frames_after_kf(0),
       initialized(false),
       config(config_),
@@ -70,7 +70,7 @@ SqrtKeypointVoEstimator<Scalar_>::SqrtKeypointVoEstimator(
   huber_thresh = Scalar(config.vio_obs_huber_thresh);
   calib = calib_.cast<Scalar>(); // 包含内参、外参、分辨率等
 
-  // Setup marginalization 边缘化设定
+  // Setup marginalization 边缘化设定 （在SqrtBA 中，边缘化是用 QR 分解来完成）
   marg_data.is_sqrt = config.vio_sqrt_marg; // 默认配置项为true.
   marg_data.H.setZero(POSE_SIZE, POSE_SIZE); // POSE_SIZE = 6
   marg_data.b.setZero(POSE_SIZE);
@@ -94,7 +94,7 @@ SqrtKeypointVoEstimator<Scalar_>::SqrtKeypointVoEstimator(
   max_states = config.vio_max_states;
   max_kfs = config.vio_max_kfs;
 
-  vision_data_queue.set_capacity(10);
+  vision_data_queue.set_capacity(10); // 视觉并发队列设置容量为10
   imu_data_queue.set_capacity(300);
 }
 
@@ -123,40 +123,40 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
   UNUSED(bg);
   UNUSED(ba);
 
-  auto proc_func = [&] {
+  auto proc_func = [&] { // 用lambda表达式定义线程函数
     OpticalFlowResult::Ptr prev_frame, curr_frame;
     bool add_pose = false;
 
     while (true) {
-      // get next optical flow result (blocking if queue empty)
+      // get next optical flow result (blocking if queue empty) 获取光流结果，如果队列为空会阻塞
       vision_data_queue.pop(curr_frame);
 
-      if (config.vio_enforce_realtime) {
+      if (config.vio_enforce_realtime) { // 如果强制实时，那么当队列中有新的帧，则丢掉当前的帧，获取最新帧
         // drop current frame if another frame is already in the queue.
         while (!vision_data_queue.empty()) vision_data_queue.pop(curr_frame);
       }
 
-      if (!curr_frame.get()) {
+      if (!curr_frame.get()) { // 如果当前帧为空指针，则退出循环
         break;
       }
 
-      // Correct camera time offset (relevant for VIO)
+      // Correct camera time offset (relevant for VIO) 校正相机时间偏移量（与Vio相关） 
       // curr_frame->t_ns += calib.cam_time_offset_ns;
 
-      // this is VO not VIO --> just drain IMU queue and ignore
+      // this is VO not VIO --> just drain IMU queue and ignore 这里是VO,只要排干imu的队列 并忽略 
       while (!imu_data_queue.empty()) {
         ImuData<double>::Ptr d;
         imu_data_queue.pop(d);
       }
 
-      if (!initialized) {
-        last_state_t_ns = curr_frame->t_ns;
+      if (!initialized) { // initialized初始为false. 第一帧初始化
+        last_state_t_ns = curr_frame->t_ns; // 图像时间戳
 
         frame_poses[last_state_t_ns] =
-            PoseStateWithLin(last_state_t_ns, T_w_i_init, true);
+            PoseStateWithLin(last_state_t_ns, T_w_i_init, true); // 保存第一帧的位姿状态，第一帧的初始姿态T_w_i_init设为单位阵
 
         marg_data.order.abs_order_map[last_state_t_ns] =
-            std::make_pair(0, POSE_SIZE);
+            std::make_pair(0, POSE_SIZE); // key-value: key is timestamp & value is a pair of '(0, POSE_SIZE)'
         marg_data.order.total_size = POSE_SIZE;
         marg_data.order.items = 1;
 
@@ -176,7 +176,7 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
         add_pose = true;
       }
 
-      measure(curr_frame, add_pose);
+      measure(curr_frame, add_pose); // 测量: 后端优化的入口
       prev_frame = curr_frame;
     }
 
@@ -204,10 +204,13 @@ void SqrtKeypointVoEstimator<Scalar_>::addIMUToQueue(
   UNUSED(data);
 }
 
+// @param[in] opt_flow_meas 当前帧的光流结果
+// @param[in] add_pose 第一个帧时为false, 后面均为true.
+// @return true
 template <class Scalar_>
 bool SqrtKeypointVoEstimator<Scalar_>::measure(
     const OpticalFlowResult::Ptr& opt_flow_meas, const bool add_pose) {
-  stats_sums_.add("frame_id", opt_flow_meas->t_ns).format("none");
+  stats_sums_.add("frame_id", opt_flow_meas->t_ns).format("none"); // 执行状态
   Timer t_total;
 
   //  std::cout << "=== measure frame " << opt_flow_meas->t_ns << "\n";
@@ -216,16 +219,22 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   // TODO: For VO there is probably no point to non kfs as state in the sliding
   // window... Just do pose-only optimization and never enter them into the
   // sliding window.
+  // TODO: 对于VO，可能没有指向非kfs作为滑动窗口的状态…只是只做姿态优化，永远不要将它们输入滑动窗口。
+
   // TODO: If we do pose-only optimization first for all frames (also KFs), this
   // may also speed up the joint optimization.
+  // TODO: 如果我们首先对所有帧（也包括KFs）进行仅姿态优化，这也会加速联合优化。 
+
   // TODO: Moreover, initial pose-only localization may allow us to project
   // untracked landmarks and "rediscover them" by optical flow or feature /
   // patch matching.
+  // TODO: 此外，初始的仅姿态定位可能允许我们投影未被跟踪的路标，并通过光流或特征补丁匹配重新发现它们。
 
   if (add_pose) {
     // The state for the first frame is added by the initialization code, but
     // otherwise we insert a new pose state here. So add_pose is only false
     // right after initialization.
+    // 第一帧的状态是由初始化代码添加的，否则我们将在这里插入一个新的姿态状态。所以add_pose只是在初始化之后才是假的。（即add_pose后面都为true.）
 
     const PoseStateWithLin<Scalar>& curr_state =
         frame_poses.at(last_state_t_ns);
@@ -233,17 +242,18 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
     last_state_t_ns = opt_flow_meas->t_ns;
 
     PoseStateWithLin next_state(opt_flow_meas->t_ns, curr_state.getPose());
-    frame_poses[last_state_t_ns] = next_state;
-  }
+    frame_poses[last_state_t_ns] = next_state; // 保存的是当前帧的时间戳，但是对应的是上一帧的状态
+  } //if (add_pose)
 
   // invariants: opt_flow_meas->t_ns is last pose state and equal to
   // last_state_t_ns
+  // 不变量：opt_flow_meas->t_ns是最后一个姿态状态，并且等于last_state_t_ns 
   BASALT_ASSERT(opt_flow_meas->t_ns == last_state_t_ns);
   BASALT_ASSERT(!frame_poses.empty());
   BASALT_ASSERT(last_state_t_ns == frame_poses.rbegin()->first);
 
   // save results
-  prev_opt_flow_res[opt_flow_meas->t_ns] = opt_flow_meas;
+  prev_opt_flow_res[opt_flow_meas->t_ns] = opt_flow_meas; // 保存当前帧的光流结果
 
   // For feature tracks that exist as landmarks, add the new frames as
   // additional observations. For every host frame, compute how many of it's
@@ -251,24 +261,31 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   // marginalization to remove the host frames with a low number of landmarks
   // connected with the latest frame. For new tracks, remember their ids for
   // possible later landmark creation.
-  int connected0 = 0;                           // num tracked landmarks cam0
-  std::map<int64_t, int> num_points_connected;  // num tracked landmarks by host
-  std::unordered_set<int> unconnected_obs0;     // new tracks cam0
+/*
+  对于作为路标而存在的特征跟踪，添加新的帧作为额外的观察。
+  对于每个主导帧，计算当前帧跟踪了多少它的路标数量：这将有助于稍后在边缘化期间删除与最新帧连接的路标数量较少的主导帧。
+  对于新的跟踪，记住他们的id，为以后可能的路标创造。 
+*/
+  int connected0 = 0;                           // num tracked landmarks cam0 用于统计相机0跟踪的路标个数
+  std::map<int64_t, int> num_points_connected;  // num tracked landmarks by host 用于统计每个主帧追踪的特征点的个数
+  std::unordered_set<int> unconnected_obs0;     // new tracks cam0 左目新增加的点集
   std::vector<std::vector<int>> connected_obs0(
-      opt_flow_meas->observations.size());
+      opt_flow_meas->observations.size()); // 对于双目这个vector的size是2.
 
-  for (size_t i = 0; i < opt_flow_meas->observations.size(); i++) {
+  // step1 遍历当前帧左右目的观测，看是否有特征点存在于数据库
+  for (size_t i = 0; i < opt_flow_meas->observations.size(); i++) { // 遍历当前帧的相机：i=0对应cam0, i=1对应cam1.
     TimeCamId tcid_target(opt_flow_meas->t_ns, i);
 
-    for (const auto& kv_obs : opt_flow_meas->observations[i]) {
-      int kpt_id = kv_obs.first;
+    for (const auto& kv_obs : opt_flow_meas->observations[i]) { // 遍历当前帧的相机cam_i的特征点
+      int kpt_id = kv_obs.first; // 特征点id
 
-      if (lmdb.landmarkExists(kpt_id)) {
+      if (lmdb.landmarkExists(kpt_id)) { // 特征点在路标数据库中是否存在
         const TimeCamId& tcid_host = lmdb.getLandmark(kpt_id).host_kf_id;
 
         KeypointObservation<Scalar> kobs;
         kobs.kpt_id = kpt_id;
-        kobs.pos = kv_obs.second.translation().cast<Scalar>();
+        kobs.pos = kv_obs.second.translation().cast<Scalar>(); // kv_obs.second的类型是Eigen::AffineCompact2f
+                                                               // 包含平移、旋转和缩放
 
         lmdb.addObservation(tcid_target, kobs);
         // obs[tcid_host][tcid_target].push_back(kobs);
@@ -276,112 +293,143 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
         num_points_connected[tcid_host.frame_id]++;
         connected_obs0[i].emplace_back(kpt_id);
 
-        if (i == 0) connected0++;
+        if (i == 0) connected0++; // 统计相机0跟踪的路标个数
       } else {
         if (i == 0) {
-          unconnected_obs0.emplace(kpt_id);
+          unconnected_obs0.emplace(kpt_id); // cam0中新跟踪的点加入到集合中（在路标数据库中查找不到的路标点）
+                                            // 第一帧上的所有cam0的点，都添加到unconnected_obs0中。
         }
       }
-    }
-  }
+    } // for (const auto& kv_obs
+  } // for (size_t i = 0
 
+  // 添加关键帧策略判断：如果当前帧cam0(左目) 观测到的3d点与未能观测到3d点的特征点数比值小于一定的阈值。
+  // vio_new_kf_keypoints_thresh默认为0.7，vio_min_frames_after_kf默认为5，
+  // 当前帧cam0跟踪的点的个数与当前帧总的点的个数的比值如果小于0.7，
+  // 并且从上一个关键帧之后的帧的数量大于5，则当前帧应该成为关键帧。
   if (Scalar(connected0) / (connected0 + unconnected_obs0.size()) <
           Scalar(config.vio_new_kf_keypoints_thresh) &&
       frames_after_kf > config.vio_min_frames_after_kf)
-    take_kf = true;
+    take_kf = true; // 如果当前帧应该成为关键帧，那么take_kf为true.
 
   if (config.vio_debug) {
     std::cout << "connected0 " << connected0 << " unconnected0 "
               << unconnected_obs0.size() << std::endl;
   }
 
+  // step2 通过连接的特征点（其实就是追踪到的点）优化单帧（当前帧）位姿 //?这里面具体如何优化值得细看。
   BundleAdjustmentBase<Scalar>::optimize_single_frame_pose(
-      frame_poses[last_state_t_ns], connected_obs0);
+      frame_poses[last_state_t_ns], connected_obs0); // [out]参数1：当前帧的位姿状态；[in]参数2：连接的特征点的ids.
 
+  // step3 如果添加关键帧，则把当前帧左目新增加的点，先通过三角测量计算逆深度，然后加入到landmark数据库，否则只统计非连续关键帧的个数
   if (take_kf) {
     // For keyframes, we don't only add pose state and observations to existing
     // landmarks (done above for all frames), but also triangulate new
     // landmarks.
+    // 对于关键帧，我们不仅向现有路标添加位姿状态和观察（上面为所有帧做），而且还三角化新的路标。 
+    // 对于关键帧，我们不仅为上面所有帧的现有路标添加姿态状态和观察结果，而且还三角化新的路标。
 
     // Triangulate new points from one of the observations (with sufficient
     // baseline) and make keyframe for camera 0
+    // 从其中一个观测值中三角化新的点（有足够的基线），并为相机0创建关键帧 
+    // 从一个有足够基线的观测值中三角化新的点，并为相机0设置关键帧
+
     take_kf = false;
-    frames_after_kf = 0;
-    kf_ids.emplace(last_state_t_ns);
+    frames_after_kf = 0; // 重置非关键帧的统计
+    kf_ids.emplace(last_state_t_ns); // 添加当前帧的时间戳，以时间戳为kf的id
 
     TimeCamId tcidl(opt_flow_meas->t_ns, 0);
 
     int num_points_added = 0;
-    for (int lm_id : unconnected_obs0) {
+    for (int lm_id : unconnected_obs0) { // 遍历未连接的特征点id
       // Find all observations
       std::map<TimeCamId, KeypointObservation<Scalar>> kp_obs;
 
-      for (const auto& kv : prev_opt_flow_res) {
-        for (size_t k = 0; k < kv.second->observations.size(); k++) {
-          auto it = kv.second->observations[k].find(lm_id);
+      // 对于当前帧的一个未连接的特征点：
+      // 先按滑窗遍历，再按相机遍历，查找特征点（相当于滑窗每个帧，查找2次特征点）
+      for (const auto& kv : prev_opt_flow_res) { // 遍历滑窗里面所有关键帧的光流结果：kv是时间戳和光流结果的键值对。
+        for (size_t k = 0; k < kv.second->observations.size(); k++) { // 遍历相机（0-左目，1-右目）
+          auto it = kv.second->observations[k].find(lm_id); // 根据key(特征点id)查找特征点
           if (it != kv.second->observations[k].end()) {
-            TimeCamId tcido(kv.first, k);
+            TimeCamId tcido(kv.first, k); // 时间戳和相机序号构建TimeCamId对象
 
             KeypointObservation<Scalar> kobs;
             kobs.kpt_id = lm_id;
-            kobs.pos = it->second.translation().template cast<Scalar>();
+            kobs.pos = it->second.translation().template cast<Scalar>(); // it 是map类型的迭代器，是特征点id和紧凑仿射变换的键值对
 
             // obs[tcidl][tcido].push_back(kobs);
-            kp_obs[tcido] = kobs;
+            kp_obs[tcido] = kobs; // kp_obs保存的是滑窗中所有可以观测到id为lm_id的特征点的时间戳和平移信息。
           }
         }
       }
 
-      // triangulate
+      // 通过三角化恢复当前帧cam0的特征点的逆深度，并将成功恢复逆深度的3d点加入到landmark数据库，最后将视觉测量关系加入到数据库。
+      // triangulate 三角测量
       bool valid_kp = false;
+      // vio_min_triangulation_dist默认0.05或者0.07，最小三角测量距离
       const Scalar min_triang_distance2 =
           Scalar(config.vio_min_triangulation_dist *
                  config.vio_min_triangulation_dist);
       for (const auto& kv_obs : kp_obs) {
-        if (valid_kp) break;
+        if (valid_kp) break; // 如果该点变成有效，则终止遍历
         TimeCamId tcido = kv_obs.first;
 
+        // 当前帧（目标帧）左目的特征id为lm_id的点的像素坐标
         const Vec2 p0 = opt_flow_meas->observations.at(0)
                             .at(lm_id)
                             .translation()
                             .cast<Scalar>();
+        // 滑窗主导帧的对应相机的特征id为lm_id的点的像素坐标                     
         const Vec2 p1 = prev_opt_flow_res[tcido.frame_id]
                             ->observations[tcido.cam_id]
                             .at(lm_id)
                             .translation()
                             .template cast<Scalar>();
 
-        Vec4 p0_3d, p1_3d;
+        Vec4 p0_3d, p1_3d; // 反（逆）投影恢复3d坐标。将像素坐标转换至相机坐标（前3维）
         bool valid1 = calib.intrinsics[0].unproject(p0, p0_3d);
         bool valid2 = calib.intrinsics[tcido.cam_id].unproject(p1, p1_3d);
         if (!valid1 || !valid2) continue;
 
+        // 计算两帧之间的相对运动：当前帧(target frame)的位姿的逆 * 滑窗的关键帧(host frame)的位姿, 得到T_th
         SE3 T_i0_i1 = getPoseStateWithLin(tcidl.frame_id).getPose().inverse() *
                       getPoseStateWithLin(tcido.frame_id).getPose();
+        // 对于纯VO的外参来说 calib.T_i_c[0]是左目到左目的外参，其实是单位阵；
+        // calib.T_i_c[1]是右目到左目的外参
         SE3 T_0_1 =
             calib.T_i_c[0].inverse() * T_i0_i1 * calib.T_i_c[tcido.cam_id];
 
-        if (T_0_1.translation().squaredNorm() < min_triang_distance2) continue;
+        // 对于第一帧来说，做三角测量，应该是通过右目成功跟踪匹配的点来完成的吧
+        if (T_0_1.translation().squaredNorm() < min_triang_distance2) continue; // 如果基线不够，则跳过
+        
 
+        // 通过三角化恢复当前帧cam0的特征点的逆深度:
+        // 根据相机的运动（R和t, 对于单目是对极几何求出，而双目并不是）和归一化坐标，通过三角测量，估计地图点的深度
+        // 对点进行三角测量并返回齐次表示，p0_triangulated的前3维是单位长度方向向量，最后一维是逆深度
         Vec4 p0_triangulated = triangulate(p0_3d.template head<3>(),
                                            p1_3d.template head<3>(), T_0_1);
 
+        // 将成功恢复逆深度的3d点加入到landmark数据库
         if (p0_triangulated.array().isFinite().all() &&
             p0_triangulated[3] > 0 && p0_triangulated[3] < Scalar(3.0)) {
+          // 将当前帧的点存入特征点数据库
           Keypoint<Scalar> kpt_pos;
-          kpt_pos.host_kf_id = tcidl;
+          kpt_pos.host_kf_id = tcidl; // 主帧id为：当前帧的时间戳（作为帧id）+ 相机序号0（作为相机id）构成。
           kpt_pos.direction =
               StereographicParam<Scalar>::project(p0_triangulated);
           kpt_pos.inv_dist = p0_triangulated[3];
-          lmdb.addLandmark(lm_id, kpt_pos);
+          lmdb.addLandmark(lm_id, kpt_pos); /// 以特征点id为key，存入路标点数据库；value 是主帧id + 方位向量 + 逆深度
+                                            ///- 从这里看出，首次提取FAST角点的帧是host frame.
 
-          num_points_added++;
+          num_points_added++; // 恢复逆深度的点数量加1
           valid_kp = true;
         }
       }
 
       if (valid_kp) {
+        // 将视觉测量关系加入到数据库。
         for (const auto& kv_obs : kp_obs) {
+          // kv_obs.first为TimeCamId类型，kv_obs.second是KeypointObservation类型，包含特征点id,以及像素坐标
           lmdb.addObservation(kv_obs.first, kv_obs.second);
         }
 
@@ -390,28 +438,32 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
       }
     }
 
-    num_points_kf[opt_flow_meas->t_ns] = num_points_added;
+    num_points_kf[opt_flow_meas->t_ns] = num_points_added; // 统计当前kf新添加的特征点的个数
   } else {
-    frames_after_kf++;
+    // take_kf == false
+    frames_after_kf++; // 统计自最后一个关键帧之后连续的非关键帧的个数。
   }
 
+  // step4 遍历特征点数据库，判断每一个特征点如果不在当前帧的观测里面，则添加到lost_landmaks
   std::unordered_set<KeypointId> lost_landmaks;
-  if (config.vio_marg_lost_landmarks) {
-    for (const auto& kv : lmdb.getLandmarks()) {
+  if (config.vio_marg_lost_landmarks) { // vio_marg_lost_landmarks默认为true.
+    for (const auto& kv : lmdb.getLandmarks()) { // kv是Eigen::aligned_unordered_map<KeypointId, Keypoint<Scalar>>类型的迭代器
       bool connected = false;
       for (size_t i = 0; i < opt_flow_meas->observations.size(); i++) {
-        if (opt_flow_meas->observations[i].count(kv.first) > 0)
+        if (opt_flow_meas->observations[i].count(kv.first) > 0) // kv.first 是特征点id.
           connected = true;
       }
       if (!connected) {
-        lost_landmaks.emplace(kv.first);
+        lost_landmaks.emplace(kv.first); // 在当前帧的观测数据中找不到，则加到集合lost_landmaks
       }
     }
   }
 
+  // step5 优化和边缘化
   optimize_and_marg(num_points_connected, lost_landmaks);
 
   if (out_state_queue) {
+    // 取出当前帧的状态量（时间戳，位姿，速度，bg, ba）存入输出状态队列，用于在pangolin上的显示
     const PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
 
     typename PoseVelBiasState<double>::Ptr data(new PoseVelBiasState<double>(
@@ -423,6 +475,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   }
 
   if (out_vis_queue) {
+    // 用于在pangonlin上显示追踪的特征点和光流patch
     VioVisualizationData::Ptr data(new VioVisualizationData);
 
     data->t_ns = last_state_t_ns;
@@ -436,7 +489,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
     get_current_points(data->points, data->point_ids);
 
     data->projections.resize(opt_flow_meas->observations.size());
-    computeProjections(data->projections, last_state_t_ns);
+    computeProjections(data->projections, last_state_t_ns); //? 计算投影, 这里面也值得看如何计算的
 
     data->opt_flow_res = prev_opt_flow_res[last_state_t_ns];
 
@@ -445,7 +498,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
 
   last_processed_t_ns = last_state_t_ns;
 
-  stats_sums_.add("measure", t_total.elapsed()).format("ms");
+  stats_sums_.add("measure", t_total.elapsed()).format("ms"); // 统计measure函数消耗的时间
 
   return true;
 }
@@ -938,15 +991,16 @@ void SqrtKeypointVoEstimator<Scalar_>::optimize() {
 
   // timing
   ExecutionStats stats;
-  Timer timer_total;
+  Timer timer_total; // 定义计时对象in milliseconds
   Timer timer_iteration;
 
   // construct order of states in linear system --> sort by ascending
   // timestamp
   AbsOrderMap aom;
+  // abs_order_map是一个map of key-value: 在initialize函数中key is timestamp & value is a pair of '(0, POSE_SIZE)'
   aom.abs_order_map = marg_data.order.abs_order_map;
-  aom.total_size = marg_data.order.total_size;
-  aom.items = marg_data.order.items;
+  aom.total_size = marg_data.order.total_size; // 在initialize函数中total_size = POSE_SIZE = 6.
+  aom.items = marg_data.order.items; // 在initialize函数中items = 1.
 
   for (const auto& kv : frame_poses) {
     if (aom.abs_order_map.count(kv.first) == 0) {
@@ -963,22 +1017,24 @@ void SqrtKeypointVoEstimator<Scalar_>::optimize() {
   // - different initial lambda (based on previous iteration)
   // - no landmark damping
   // - outlier removal after 4 iterations?
-  lambda = Scalar(config.vio_lm_lambda_initial);
+  //? 上面提到的SC是schur complement
+  lambda = Scalar(config.vio_lm_lambda_initial); // 1e-4
 
-  // record stats
+  // record stats 记录状态
   stats.add("num_cams", frame_poses.size()).format("count");
   stats.add("num_lms", lmdb.numLandmarks()).format("count");
   stats.add("num_obs", lmdb.numObservations()).format("count");
 
-  // setup landmark blocks
+  // setup landmark blocks 设置路标块
   typename LinearizationBase<Scalar, POSE_SIZE>::Options lqr_options;
-  lqr_options.lb_options.huber_parameter = huber_thresh;
-  lqr_options.lb_options.obs_std_dev = obs_std_dev;
-  lqr_options.linearization_type = config.vio_linearization_type;
+  lqr_options.lb_options.huber_parameter = huber_thresh; // 1.0
+  lqr_options.lb_options.obs_std_dev = obs_std_dev; // 0.5
+  lqr_options.linearization_type = config.vio_linearization_type; // ABS_QR
   std::unique_ptr<LinearizationBase<Scalar, POSE_SIZE>> lqr;
 
   {
     Timer t;
+    // 创建线性化对象
     lqr = LinearizationBase<Scalar, POSE_SIZE>::create(this, aom, lqr_options,
                                                        &marg_data);
     stats.add("allocateLMB", t.reset()).format("ms");

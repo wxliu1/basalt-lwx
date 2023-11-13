@@ -80,6 +80,15 @@
         "typeinfo": "cpp",
         "valarray": "cpp",
         "variant": "cpp",
-        "*.inc": "cpp"
+        "*.inc": "cpp",
+        "fft": "cpp",
+        "nnls": "cpp",
+        "cholmodsupport": "cpp",
+        "klusupport": "cpp",
+        "pastixsupport": "cpp",
+        "spqrsupport": "cpp",
+        "superlusupport": "cpp",
+        "umfpacksupport": "cpp",
+        "alignedvector3": "cpp"
     }
 }

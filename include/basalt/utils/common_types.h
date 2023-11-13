@@ -65,7 +65,7 @@ struct TimeCamId {
   TimeCamId(const FrameId& frame_id, const CamId& cam_id)
       : frame_id(frame_id), cam_id(cam_id) {}
 
-  FrameId frame_id;
+  FrameId frame_id; // 用时间戳作为帧id
   CamId cam_id;
 };
 

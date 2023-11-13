@@ -68,7 +68,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <basalt/utils/format.hpp>
 #include <basalt/utils/time_utils.hpp>
 
-#include "wx_ros2_io.h"
+#include "wx_ros2_io.h" // 2023-11-10.
+#include "wx_yaml_io.h"
+
+using namespace wx;
 
 // enable the "..."_format(...) string literal
 using namespace basalt::literals;
@@ -128,6 +131,8 @@ pangolin::OpenGlRenderState camera;
 // Visualization variables
 std::unordered_map<int64_t, basalt::VioVisualizationData::Ptr> vis_map;
 
+tbb::concurrent_bounded_queue<int64_t> vis_ts_queue; // added by wxliu on 2023-11-11.
+
 tbb::concurrent_bounded_queue<basalt::VioVisualizationData::Ptr> out_vis_queue;
 tbb::concurrent_bounded_queue<basalt::PoseVelBiasState<double>::Ptr>
     out_state_queue;
@@ -158,6 +163,18 @@ basalt::VioDatasetPtr vio_dataset;
 basalt::VioConfig vio_config;
 basalt::OpticalFlowBase::Ptr opt_flow_ptr;
 basalt::VioEstimatorBase::Ptr vio;
+
+// 2023-11-10.
+void feedImage(basalt::OpticalFlowInput::Ptr data) 
+{
+  opt_flow_ptr->input_queue.push(data);
+}
+
+void feedImu(basalt::ImuData<double>::Ptr data) 
+{
+  vio->imu_data_queue.push(data);
+}
+// the end.
 
 // Feed functions
 // 读取图像并喂给光流追踪: 将图像push到前端opt_flow的输入队列中
@@ -213,7 +230,44 @@ void feed_imu() {
   vio->imu_data_queue.push(nullptr);
 }
 
+// 2023-11-11
+void sigintHandler(int sig) {
+    
+    printf("sig=%d\n",sig);
+    terminate = true;
+    signal(sig,SIG_DFL);//设置收到信号SIGINT采取默认方式响应（ctrl+c~结束进程）
+    
+    // 执行特定的中断处理操作
+    // 例如，关闭打开的文件、释放资源等
+    // 然后退出程序
+
+    exit(0);
+}
+
+void stop() 
+{
+  std::cout << "stop\n";
+  vio->imu_data_queue.push(nullptr);
+  opt_flow_ptr->input_queue.push(nullptr);
+  terminate = true;
+
+    // if (terminate.load() == false) 
+    // {
+    //   vio->imu_data_queue.push(nullptr);
+    //   opt_flow_ptr->input_queue.push(nullptr);
+    //   terminate.store(true);
+    // }
+}
+// the end.
+
 int main(int argc, char** argv) {
+
+  // 注册中断信号处理函数
+  //signal(SIGINT, sigintHandler); // 2023-11-11
+
+/*
+ * comment on 2023-11-10.
+
   bool show_gui = true;
   bool print_queue = false;
   std::string cam_calib_path;
@@ -227,7 +281,7 @@ int main(int argc, char** argv) {
   bool use_imu = true;
   bool use_double = false;
 
-  // step 1: 命令行参数解析
+  // step 1: 命令行参数解析  
   CLI::App app{"App description"};
 
   app.add_option("--show-gui", show_gui, "Show GUI");
@@ -265,17 +319,23 @@ int main(int argc, char** argv) {
   } catch (const CLI::ParseError& e) {
     return app.exit(e);
   }
+*/
+  // 2023-11-10
+  struct TYamlIO yaml;
+  yaml.ReadConfiguration();
+  // the end.
+
 
   // global thread limit is in effect until global_control object is destroyed
   // 全局线程限制在全局控制对象被销毁之前一直有效
   std::unique_ptr<tbb::global_control> tbb_global_control;
-  if (num_threads > 0) {
+  if (yaml.num_threads > 0) {
     tbb_global_control = std::make_unique<tbb::global_control>(
-        tbb::global_control::max_allowed_parallelism, num_threads);
+        tbb::global_control::max_allowed_parallelism, yaml.num_threads);
   }
 
-  if (!config_path.empty()) {
-    vio_config.load(config_path);
+  if (!yaml.config_path.empty()) {
+    vio_config.load(yaml.config_path);
 
     if (vio_config.vio_enforce_realtime) {
       vio_config.vio_enforce_realtime = false;
@@ -290,8 +350,10 @@ int main(int argc, char** argv) {
   }
 
   // step 2: load camera calibration
-  load_data(cam_calib_path);
+  load_data(yaml.cam_calib_path);
 
+/*
+ * comment on 2023-11-10.
   // step 3: 加载不同的数据集，视觉前端初始化
   {
     basalt::DatasetIoInterfacePtr dataset_io =
@@ -312,25 +374,34 @@ int main(int argc, char** argv) {
     opt_flow_ptr =
         basalt::OpticalFlowFactory::getOpticalFlow(vio_config, calib);
 
+
+
     // 保存groudtruth时间戳和对应的平移
     for (size_t i = 0; i < vio_dataset->get_gt_pose_data().size(); i++) {
       gt_t_ns.push_back(vio_dataset->get_gt_timestamps()[i]);
       gt_t_w_i.push_back(vio_dataset->get_gt_pose_data()[i].translation());
-    }
+    }    
   }
 
+*/
+
+  // move here. 2023-11-10
+  opt_flow_ptr =
+    basalt::OpticalFlowFactory::getOpticalFlow(vio_config, calib);
+  // the end.  
+
   // step 4: 后端初始化
-  const int64_t start_t_ns = vio_dataset->get_image_timestamps().front();
+  //const int64_t start_t_ns = vio_dataset->get_image_timestamps().front(); // comment.
   {
     // 后端初始化，选择是否使用IMU
     vio = basalt::VioEstimatorFactory::getVioEstimator(
-        vio_config, calib, basalt::constants::g, use_imu, use_double); // 创建后端估计器对象
+        vio_config, calib, basalt::constants::g, yaml.use_imu, yaml.use_double); // 创建后端估计器对象
     vio->initialize(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
 
     // 后端和前端的对接 （前端光流指针指向的输出队列指针保存的是后端估计器指向的视觉数据队列的地址）
     opt_flow_ptr->output_queue = &vio->vision_data_queue;
     // 后端和可视化线程的对接
-    if (show_gui) vio->out_vis_queue = &out_vis_queue;
+    if (yaml.show_gui) vio->out_vis_queue = &out_vis_queue;
     vio->out_state_queue = &out_state_queue;
   }
 
@@ -338,13 +409,13 @@ int main(int argc, char** argv) {
   basalt::MargDataSaver::Ptr marg_data_saver;
 
   // 如果提供了marg数据保存的路径，则reset marg data saver
-  if (!marg_data_path.empty()) {
-    marg_data_saver.reset(new basalt::MargDataSaver(marg_data_path));
+  if (!yaml.marg_data_path.empty()) {
+    marg_data_saver.reset(new basalt::MargDataSaver(yaml.marg_data_path));
     vio->out_marg_queue = &marg_data_saver->in_marg_queue;
 
     // Save gt.
     {
-      std::string p = marg_data_path + "/gt.cereal";
+      std::string p = yaml.marg_data_path + "/gt.cereal";
       std::ofstream os(p, std::ios::binary);
 
       {
@@ -358,14 +429,26 @@ int main(int argc, char** argv) {
 
   vio_data_log.Clear();
 
+  // 2023-11-10.
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<CRos2IO>();
+  node->feedImage_ = std::bind(&feedImage, std::placeholders::_1);
+  node->feedImu_ = std::bind(&feedImu, std::placeholders::_1);
+  node->stop_ = std::bind(&stop);
+  // the end.
+
   // step 6: 创建图像和imu线程输入数据
+/*
+ * comment 2023-11-10.  
   std::thread t1(&feed_images);
   std::thread t2(&feed_imu);
+*/
 
   // 线程t3从可视化队列中取出数据，存入可视化map.
   std::shared_ptr<std::thread> t3;
 
-  if (show_gui)
+  if (yaml.show_gui)
+  {
     t3.reset(new std::thread([&]() {
       basalt::VioVisualizationData::Ptr data;
 
@@ -374,6 +457,7 @@ int main(int argc, char** argv) {
 
         if (data.get()) {
           vis_map[data->t_ns] = data;
+          vis_ts_queue.push(data->t_ns); // added by wxliu on 2023-11-11.
         } else {
           break;
         }
@@ -381,17 +465,56 @@ int main(int argc, char** argv) {
 
       std::cout << "Finished t3" << std::endl;
     }));
+  }
+  // 2023-11-11
+  else 
+  {
+    t3.reset(new std::thread([&]() {
+      basalt::VioVisualizationData::Ptr data;
+
+      //while (true) {
+      while (!terminate) {
+        out_vis_queue.pop(data);
+
+        if (data.get()) {
+          node->PublishPoints(data);
+        } else {
+          break;
+        }
+      }
+
+      std::cout << "Finished t3" << std::endl;
+    }));
+  }
+  // the end.
 
   // 线程t4用于取出状态（速度，平移，ba, bg），在pangolin的显示
   std::thread t4([&]() {
     basalt::PoseVelBiasState<double>::Ptr data;
 
-    while (true) {
+    // 2023-11-10.
+    bool bFirst = true;
+    int64_t start_t_ns = 0;
+    // the end.
+
+    //while (true) {
+    while (!terminate) {
       out_state_queue.pop(data);
 
       if (!data.get()) break;
 
+      if(1) // 2023-11-11
+      {
+        node->PublishOdometry(data);
+      }
+      else{
+
       int64_t t_ns = data->t_ns;
+      if(bFirst)
+      {
+        bFirst = false;
+        start_t_ns = t_ns;
+      }
 
       // std::cerr << "t_ns " << t_ns << std::endl;
       Sophus::SE3d T_w_i = data->T_w_i;
@@ -403,7 +526,7 @@ int main(int argc, char** argv) {
       vio_t_w_i.emplace_back(T_w_i.translation());
       vio_T_w_i.emplace_back(T_w_i);
 
-      if (show_gui) {
+      if (yaml.show_gui) {
         std::vector<float> vals;
         vals.push_back((t_ns - start_t_ns) * 1e-9);
 
@@ -414,6 +537,7 @@ int main(int argc, char** argv) {
 
         vio_data_log.Log(vals);
       }
+    } // added this line on 2023-11-11.
     }
 
     std::cout << "Finished t4" << std::endl;
@@ -430,7 +554,7 @@ int main(int argc, char** argv) {
               << vio->imu_data_queue.size() << std::endl;
   };
 
-  if (print_queue) { // cli参数，默认false.用于打印队列的size.
+  if (yaml.print_queue) { // cli参数，默认false.用于打印队列的size.
     t5.reset(new std::thread([&]() {
       while (!terminate) {
         print_queue_fn();
@@ -439,12 +563,18 @@ int main(int argc, char** argv) {
     }));
   }
 
+  // 2023-11-10
+  rclcpp::spin(node);
+  //rclcpp::shutdown();
+  node->stop_();
+  // the end.
+
   auto time_start = std::chrono::high_resolution_clock::now();
 
   // record if we close the GUI before VIO is finished.
   bool aborted = false;
 
-  if (show_gui) {
+  if (yaml.show_gui) {
     pangolin::CreateWindowAndBind("Main", 1800, 1000);
 
     glEnable(GL_DEPTH_TEST);
@@ -496,13 +626,15 @@ int main(int argc, char** argv) {
 
     main_display.AddDisplay(img_view_display);
     main_display.AddDisplay(display3D);
-
+std::cout << "224---\n";
     while (!pangolin::ShouldQuit()) {
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+std::cout << "226---\n";
       if (follow) {
         size_t frame_id = show_frame;
-        int64_t t_ns = vio_dataset->get_image_timestamps()[frame_id];
+        //int64_t t_ns = vio_dataset->get_image_timestamps()[frame_id]; // comment 2023-11-11
+        int64_t t_ns = 0;
+        vis_ts_queue.pop(t_ns);
         auto it = vis_map.find(t_ns);
 
         if (it != vis_map.end()) {
@@ -614,9 +746,12 @@ int main(int argc, char** argv) {
   // push to full queue, so drain queue now
   vio->drain_input_queues();
 
+/*
+ * comment 2023-11-10.
   // join input threads
   t1.join();
   t2.join();
+*/
 
   // std::cout << "Data input finished, terminate auxiliary threads.";
   terminate = true;
@@ -627,7 +762,7 @@ int main(int argc, char** argv) {
   if (t5) t5->join();
 
   // after joining all threads, print final queue sizes.
-  if (print_queue) {
+  if (yaml.print_queue) {
     std::cout << "Final queue sizes:" << std::endl;
     print_queue_fn();
   }
@@ -659,37 +794,37 @@ int main(int argc, char** argv) {
     stats.save_json("stats_vio.json");
   }
 
-  if (!aborted && !trajectory_fmt.empty()) {
+  if (!aborted && !yaml.trajectory_fmt.empty()) {
     std::cout << "Saving trajectory..." << std::endl;
 
-    if (trajectory_fmt == "kitti") {
+    if (yaml.trajectory_fmt == "kitti") {
       kitti_fmt = true;
       euroc_fmt = false;
       tum_rgbd_fmt = false;
     }
-    if (trajectory_fmt == "euroc") {
+    if (yaml.trajectory_fmt == "euroc") {
       euroc_fmt = true;
       kitti_fmt = false;
       tum_rgbd_fmt = false;
     }
-    if (trajectory_fmt == "tum") {
+    if (yaml.trajectory_fmt == "tum") {
       tum_rgbd_fmt = true;
       euroc_fmt = false;
       kitti_fmt = false;
     }
 
-    save_groundtruth = trajectory_groundtruth;
+    save_groundtruth = yaml.trajectory_groundtruth;
 
     saveTrajectoryButton(); // 响应pangonlin上用于保存轨迹的按钮
   }
 
-  if (!aborted && !result_path.empty()) {
+  if (!aborted && !yaml.result_path.empty()) {
     double error = basalt::alignSVD(vio_t_ns, vio_t_w_i, gt_t_ns, gt_t_w_i);
 
     auto exec_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
         time_end - time_start);
 
-    std::ofstream os(result_path);
+    std::ofstream os(yaml.result_path);
     {
       cereal::JSONOutputArchive ar(os);
       ar(cereal::make_nvp("rms_ate", error));

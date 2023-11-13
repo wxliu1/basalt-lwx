@@ -101,7 +101,7 @@ struct Calibration {
   /// Point in camera coordinate frame \f$ p_c \f$ can be transformed to the
   /// point in IMU coordinate frame as \f$ p_i = T_{ic} p_c, T_{ic} \in
   /// SE(3)\f$
-  Eigen::aligned_vector<SE3> T_i_c;
+  Eigen::aligned_vector<SE3> T_i_c; // 相机到IMU的变换
 
   /// @brief Vector of camera intrinsics. Can store different camera models. See
   /// \ref GenericCamera.

@@ -206,18 +206,19 @@ class PinholeCamera {
     const Scalar& cx = param_[2];
     const Scalar& cy = param_[3];
 
-    const Scalar mx = (proj_eval[0] - cx) / fx;
-    const Scalar my = (proj_eval[1] - cy) / fy;
+    const Scalar mx = (proj_eval[0] - cx) / fx; // 归一化坐标X/Z
+    const Scalar my = (proj_eval[1] - cy) / fy; // Y/Z
 
-    const Scalar r2 = mx * mx + my * my;
+    const Scalar r2 = mx * mx + my * my; // r2 = (X^2 + y^2) / Z^2
 
-    const Scalar norm = sqrt(Scalar(1) + r2);
-    const Scalar norm_inv = Scalar(1) / norm;
+    const Scalar norm = sqrt(Scalar(1) + r2); // norm = ((X^2 + y^2 + Z^2) / Z^2)^0.5 = (X^2 + y^2 + Z^2)^0.5 / Z
+    const Scalar norm_inv = Scalar(1) / norm; // norm_inv = Z / (X^2 + y^2 + Z^2)^0.5
 
+    // 相当于相机系3d坐标，除以了模长，变成单位向量
     p3d.setZero();
-    p3d[0] = mx * norm_inv;
-    p3d[1] = my * norm_inv;
-    p3d[2] = norm_inv;
+    p3d[0] = mx * norm_inv; // X / (X^2 + y^2 + Z^2)^0.5
+    p3d[1] = my * norm_inv; // Y / (X^2 + y^2 + Z^2)^0.5
+    p3d[2] = norm_inv; // Z / (X^2 + y^2 + Z^2)^0.5
 
     if constexpr (!std::is_same_v<DerivedJ2D, std::nullptr_t> ||
                   !std::is_same_v<DerivedJparam, std::nullptr_t>) {
