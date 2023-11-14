@@ -398,7 +398,7 @@ int main(int argc, char** argv) {
       basalt::VioVisualizationData::Ptr data;
       //while (true) {
       while (!terminate) {
-        out_vis_queue.pop(data);
+        out_vis_queue.pop(data); // 当队列中数据为空时，该并发队列处于阻塞状态。
 
         if (data.get()) {
           node->PublishPoints(data);
