@@ -333,7 +333,7 @@ int main(int argc, char** argv) {
     // 后端和前端的对接 （前端光流指针指向的输出队列指针保存的是后端估计器指向的视觉数据队列的地址）
     opt_flow_ptr->output_queue = &vio->vision_data_queue;
     // 后端和可视化线程的对接
-    if (yaml.show_gui) vio->out_vis_queue = &out_vis_queue;
+    /*if (yaml.show_gui)*/ vio->out_vis_queue = &out_vis_queue;
     vio->out_state_queue = &out_state_queue;
   }
 
@@ -396,7 +396,6 @@ int main(int argc, char** argv) {
   {
     t3.reset(new std::thread([&]() {
       basalt::VioVisualizationData::Ptr data;
-
       //while (true) {
       while (!terminate) {
         out_vis_queue.pop(data);
