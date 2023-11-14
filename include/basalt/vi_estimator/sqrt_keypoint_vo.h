@@ -113,12 +113,13 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   // int64_t propagate();
   // void addNewState(int64_t data_t_ns);
 
-  void optimize_and_marg(const std::map<int64_t, int>& num_points_connected,
-                         const std::unordered_set<KeypointId>& lost_landmaks);
+  bool optimize_and_marg(const std::map<int64_t, int>& num_points_connected,
+                         const std::unordered_set<KeypointId>& lost_landmaks); // change return type from 'void' to 'bool' on 2023-11-13.
 
   void marginalize(const std::map<int64_t, int>& num_points_connected,
                    const std::unordered_set<KeypointId>& lost_landmaks);
-  void optimize();
+  //void optimize();
+  bool optimize(); // modifid. 2023-11-13
 
   void logMargNullspace();
   Eigen::VectorXd checkMargNullspace() const;
@@ -195,6 +196,11 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
     return T_w_i_init.template cast<double>();
   }
 
+  void setT_w_i_init(Sophus::SE3d Twi) // 2023-11-13.
+  {
+    T_w_i_init = Twi.template cast<Scalar>();
+  }
+
   void debug_finalize() override;
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -247,5 +253,11 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   // timing and stats
   ExecutionStats stats_all_;
   ExecutionStats stats_sums_;
+
+  // 2023-11-13
+  // bool converged { false };
+  int marg_frame_index{-1};
+  // the end.
+
 };
 }  // namespace basalt

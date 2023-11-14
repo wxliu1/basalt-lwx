@@ -70,6 +70,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "wx_ros2_io.h" // 2023-11-10.
 #include "wx_yaml_io.h"
+#include "imu/imu_process.h"
 
 using namespace wx;
 
@@ -164,10 +165,64 @@ basalt::VioConfig vio_config;
 basalt::OpticalFlowBase::Ptr opt_flow_ptr;
 basalt::VioEstimatorBase::Ptr vio;
 
-// 2023-11-10.
-void feedImage(basalt::OpticalFlowInput::Ptr data) 
+// 2023-11-13
+
+ImuProcess* g_imu = nullptr;
+
+void SetFirstVisualPose(ImuProcess* imu)
 {
+  // std::cout << std::boolalpha << "initFirstPoseFlag=" << imu->InitFirstPoseFlag() << std::endl;
+
+  if (!imu->InitFirstPoseFlag()) {
+    imu->SetFirstPoseFlag(true);
+
+    Eigen::Matrix3d R_WC0;
+/*    
+    R_WC0 << 1, 0, 0, 0, 0, 1, 0, -1,
+        0;  // 如果是相机模式，第一个位姿绕x轴旋转-90度，使相机z轴对应着世界系y轴，即镜头前方对应世界系y轴方向。
+            // 或者直接把这个位姿，加到FrameState的初始位姿T_w_cl(R_WC0,
+            // t_WC0)中
+*/
+    R_WC0 << 0, 0, 1, 0, 1, 0, -1, 0, 0; // 绕y轴逆时针旋转90度，使镜头对着 world frame 的 x 轴 
+
+    Eigen::Matrix3d R_WC0_tmp;
+    R_WC0_tmp << 1, 0, 0, 0, 0, 1, 0, -1,0; // 再绕x轴旋转-90度 
+
+    R_WC0 = R_WC0_tmp * R_WC0;
+
+    Vector3d t_WC0 = Vector3d(0, 0, 0);
+
+    const Sophus::SE3d TWC0(R_WC0, t_WC0);
+    std::cout << "[lwx] first camera pose: TWC0= \n"
+              << TWC0.matrix() << std::endl
+              << std::endl;
+
+    vio->setT_w_i_init(TWC0);
+
+  }
+
+}
+
+// the end.
+
+// 2023-11-10.
+void feedImage(basalt::OpticalFlowInput::Ptr data, ImuProcess* imu) 
+{
+  if (sys_cfg_.use_imu) {
+    // nanosecond to second
+    double curTime = data->t_ns / 1e9  + sys_cfg_.td;
+    bool bl = imu->ProcessData(curTime);
+    if(!bl) return ;
+    
+  }
+  else {
+   
+    SetFirstVisualPose(imu);
+  }
+
+
   opt_flow_ptr->input_queue.push(data);
+
 }
 
 void feedImu(basalt::ImuData<double>::Ptr data) 
@@ -325,6 +380,13 @@ int main(int argc, char** argv) {
   yaml.ReadConfiguration();
   // the end.
 
+  // 2023-11-13
+  sys_cfg_.use_imu = yaml.use_imu;
+  ImuProcess imu;
+  imu.setExtrinsic(yaml.RIC[0], yaml.TIC[0]);
+  g_imu = &imu;
+  // the end.
+
 
   // global thread limit is in effect until global_control object is destroyed
   // 全局线程限制在全局控制对象被销毁之前一直有效
@@ -396,6 +458,7 @@ int main(int argc, char** argv) {
     // 后端初始化，选择是否使用IMU
     vio = basalt::VioEstimatorFactory::getVioEstimator(
         vio_config, calib, basalt::constants::g, yaml.use_imu, yaml.use_double); // 创建后端估计器对象
+    
     vio->initialize(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
 
     // 后端和前端的对接 （前端光流指针指向的输出队列指针保存的是后端估计器指向的视觉数据队列的地址）
@@ -429,12 +492,27 @@ int main(int argc, char** argv) {
 
   vio_data_log.Clear();
 
+  // 2023-11-14
+  if (sys_cfg_.use_imu) {
+    imu.SetTwc0_ = std::bind(&basalt::VioEstimatorBase::setT_w_i_init, vio, std::placeholders::_1);
+  }
+  // the end.
+
   // 2023-11-10.
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<CRos2IO>();
-  node->feedImage_ = std::bind(&feedImage, std::placeholders::_1);
+  //auto node = std::make_shared<CRos2IO>();
+  auto node = std::make_shared<CRos2IO>(sys_cfg_.use_imu);
+
+  node->inputIMU_ = std::bind(&ImuProcess::inputIMU, &imu, std::placeholders::_1, 
+    std::placeholders::_2, std::placeholders::_3);
+
+  node->feedImage_ = std::bind(&feedImage, std::placeholders::_1, &imu);
+  // node->feedImage_ = std::bind(&feedImage, std::placeholders::_1);
+#if USE_TIGHT_COUPLING  
   node->feedImu_ = std::bind(&feedImu, std::placeholders::_1);
+#endif 
   node->stop_ = std::bind(&stop);
+
   // the end.
 
   // step 6: 创建图像和imu线程输入数据
@@ -444,7 +522,8 @@ int main(int argc, char** argv) {
   std::thread t2(&feed_imu);
 */
 
-  // 线程t3从可视化队列中取出数据，存入可视化map.
+#ifdef _SHOW_POINTS
+  // 线程t3从可视化队列中取出数据(3d points, frame pose etc.)，存入可视化map.
   std::shared_ptr<std::thread> t3;
 
   if (yaml.show_gui)
@@ -487,6 +566,7 @@ int main(int argc, char** argv) {
     }));
   }
   // the end.
+#endif
 
   // 线程t4用于取出状态（速度，平移，ba, bg），在pangolin的显示
   std::thread t4([&]() {
@@ -568,6 +648,8 @@ int main(int argc, char** argv) {
   //rclcpp::shutdown();
   node->stop_();
   // the end.
+
+#ifdef _SHOW_UI_
 
   auto time_start = std::chrono::high_resolution_clock::now();
 
@@ -738,6 +820,7 @@ std::cout << "226---\n";
       aborted = true;
     }
   }
+#endif
 
   // wait first for vio to complete processing
   vio->maybe_join();
@@ -757,7 +840,7 @@ std::cout << "226---\n";
   terminate = true;
 
   // join other threads
-  if (t3) t3->join();
+  // if (t3) t3->join(); // comment 2023-11-14.
   t4.join();
   if (t5) t5->join();
 
@@ -767,6 +850,7 @@ std::cout << "226---\n";
     print_queue_fn();
   }
 
+#if 0
   auto time_end = std::chrono::high_resolution_clock::now();
   const double duration_total =
       std::chrono::duration<double>(time_end - time_start).count();
@@ -834,6 +918,7 @@ std::cout << "226---\n";
     }
     os.close();
   }
+#endif
 
   return 0;
 }

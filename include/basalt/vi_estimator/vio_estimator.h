@@ -41,6 +41,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace basalt {
 
+
 struct VioVisualizationData {
   typedef std::shared_ptr<VioVisualizationData> Ptr;
 
@@ -126,6 +127,7 @@ class VioEstimatorBase {
   virtual inline void debug_finalize() {}
 
   virtual Sophus::SE3d getT_w_i_init() = 0;
+  virtual void setT_w_i_init(Sophus::SE3d Twi) = 0; // 2023-11-13.
 
   // Legacy functions. Should not be used in the new code. 遗留函数。不应该在新代码中使用
   virtual void setMaxStates(size_t val) = 0;

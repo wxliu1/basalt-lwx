@@ -9,6 +9,7 @@
 
 #include <unistd.h>
 
+
 using namespace wx;
 
 void TYamlIO::ReadConfiguration()
@@ -39,7 +40,14 @@ void TYamlIO::ReadConfiguration()
     config["num_threads"] = num_threads;
     config["use_imu"] = use_imu;
     config["use_double"] = use_double;
-
+/*
+    std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
+                              0.0, 1.0, 0.0, 0.0,
+                              0.0, 0.0, 1.0, 0.0,
+                              0.0, 0.0, 0.0, 1.0};
+    
+    config["body_T_cam0"]["data"] = vector_T;
+*/
     fout << config;
 
     fout.close();
@@ -69,6 +77,22 @@ void TYamlIO::ReadConfiguration()
     num_threads = config["num_threads"].as<int>();
     use_imu = config["use_imu"].as<bool>();
     use_double = config["use_double"].as<bool>();
+
+    // read imu_cam extrinsic
+    std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
+                              0.0, 1.0, 0.0, 0.0,
+                              0.0, 0.0, 1.0, 0.0,
+                              0.0, 0.0, 0.0, 1.0};
+    vector_T = config["body_T_cam0"]["data"].as<std::vector<double>>();
+
+    Eigen::Map<Eigen::Matrix4d> T(vector_T.data());
+    Eigen::Matrix4d T2 = T.transpose();
+
+    
+    RIC.push_back(T2.block<3, 3>(0, 0));
+    TIC.push_back(T2.block<3, 1>(0, 3));
+
+    //imu_.setExtrinsic(RIC[0], TIC[0]);
 
     
   }

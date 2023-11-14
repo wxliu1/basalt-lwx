@@ -1,0 +1,8 @@
+# from vins
+
+MESSAGE(STATUS "aaaa This is a utility dir. ")
+
+cc_library(
+  NAME vin_utility
+  SRCS "utility.cpp"
+  DEPS Eigen3::Eigen )

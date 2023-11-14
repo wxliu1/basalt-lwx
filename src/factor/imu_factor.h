@@ -8,7 +8,7 @@
  *******************************************************/
 
 #pragma once
-#include <ros/assert.h>
+// #include <ros/assert.h>
 #include <iostream>
 #include <eigen3/Eigen/Dense>
 
@@ -19,7 +19,7 @@
 #include <ceres/ceres.h>
 
 // 2023-4-4.
-#include "../zc/wx_system.h"
+#include "../wx_system.h"
 using namespace wx;
 // the end.
 

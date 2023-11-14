@@ -12,7 +12,7 @@
 #include "../utility/utility.h"
 //#include "../estimator/parameters.h"
 
-#include "../zc/wx_system.h"
+#include "../wx_system.h"
 using namespace wx;
 
 #include <ceres/ceres.h>

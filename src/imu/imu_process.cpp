@@ -1,7 +1,7 @@
 
 // created [wxliu 2023-6-10]
 #include "imu_process.h"
-#include "src/zc/wx_system.h"
+#include "../wx_system.h"
 
 extern bool USE_IMU;
 
@@ -83,7 +83,7 @@ void ImuProcess::InitRosIO()
 void ImuProcess::reset()
 {
     initFirstPoseFlag = false;
-    if (sys_cfg_.use_imu)
+    if (wx::sys_cfg_.use_imu)
     {
         clearState();
     }
@@ -91,6 +91,8 @@ void ImuProcess::reset()
 
 void ImuProcess::clearState() {
 
+  std::cout << " ImuProcess::clearState\n";
+  
   imu_init_data_cnt = 0;
   accVector_.clear();
 
@@ -546,7 +548,7 @@ void ImuProcess::solveGyroscopeBias(vector<pair<double, ImageFrame>> &all_image_
         b += tmp_A.transpose() * tmp_b;
     }
     delta_bg = A.ldlt().solve(b);
-    ROS_WARN_STREAM("gyroscope bias initial calibration " << delta_bg.transpose());
+    std::cout << "gyroscope bias initial calibration " << delta_bg.transpose();
 
     for (int i = 0; i <= WINDOW_SIZE; i++)
         Bgs[i] += delta_bg;
@@ -593,7 +595,7 @@ bool ImuProcess::getIMUInterval(double t0, double t1, vector<pair<double, Eigen:
 
 void ImuProcess::inputIMU(double t, const Vector3d &linearAcceleration, const Vector3d &angularVelocity)
 {
-  if(!sys_cfg_.use_imu)
+  if(!wx::sys_cfg_.use_imu)
   {
     return ;
   }
@@ -890,7 +892,7 @@ void ImuProcess::double2vector()
         Matrix3d rot_diff = Utility::ypr2R(Vector3d(y_diff, 0, 0));
         if (abs(abs(origin_R0.y()) - 90) < 1.0 || abs(abs(origin_R00.y()) - 90) < 1.0)
         {
-            ROS_DEBUG("euler singular point!");
+            //ROS_DEBUG("euler singular point!");
             rot_diff = Rs[0] * Quaterniond(para_Pose[0][6],
                                            para_Pose[0][3],
                                            para_Pose[0][4],
@@ -1096,7 +1098,7 @@ void ImuProcess::optimization()
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
     //cout << summary.BriefReport() << endl;
-    ROS_DEBUG("Iterations : %d", static_cast<int>(summary.iterations.size()));
+    //ROS_DEBUG("Iterations : %d", static_cast<int>(summary.iterations.size()));
     //printf("solver costs: %f \n", t_solver.toc());
 
     double2vector();

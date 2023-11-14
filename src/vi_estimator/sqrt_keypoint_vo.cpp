@@ -53,6 +53,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <chrono>
 
+// 2023-11-13
+#if 1
+#include "../imu/imu_process.h"
+using namespace wx;
+extern ImuProcess* g_imu;
+#endif
+// the end.
+
 namespace basalt {
 
 template <class Scalar_>
@@ -460,8 +468,62 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   }
 
   // step5 优化和边缘化
-  optimize_and_marg(num_points_connected, lost_landmaks);
+  //optimize_and_marg(num_points_connected, lost_landmaks);
+  bool converged = optimize_and_marg(num_points_connected, lost_landmaks);
+#if 1
+  // std::cout << std::boolalpha << "converged=" << converged << std::endl;
+  // 2023-11-13
+  if (sys_cfg_.use_imu) {
+  if(converged)
+  {
+    g_imu->SetUseImuPose(false);
+  }
+  else
+  {
+    std::cout << std::boolalpha << "converged=" << converged << std::endl;
+    if (g_imu->GetSolverFlag() == INITIAL) {
+      g_imu->SetUseImuPose(false);
+      g_imu->clearState();
 
+      // if(is_not_horizontal_reboot == true)
+      // {
+      //   g_imu->SetFirstPoseFlag(true);
+      // }
+      // else
+      // {  
+      //   pub_odom_.Reset();
+      // }
+    }
+
+    if (!g_imu->UseImuPose()) 
+    {
+      last_processed_t_ns = last_state_t_ns;
+      stats_sums_.add("measure", t_total.elapsed()).format("ms");
+
+      return false;
+    }
+  }
+
+  //if (sys_cfg_.use_imu) {
+    const PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
+    g_imu->UpdateImuPose(p.getPose().template cast<double>());
+    g_imu->NonlinearOptimization(last_state_t_ns / 1e9);
+    g_imu->slideWindow(marg_frame_index); // 'marg_frame_index' should be a index of removing frame 2023-11-14.
+  }
+
+  if(g_imu->UseImuPose())
+  {
+    std::cout << "CalcImuPose \n";
+    Sophus::SE3d tf_new;
+    constexpr bool camToWorld = true;
+    g_imu->CalcImuPose(tf_new, camToWorld);
+    SE3 Twi = tf_new.template cast<Scalar>();
+    PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
+    p.setPose(Twi);
+    
+  }
+  // the end.
+#endif
   if (out_state_queue) {
     // 取出当前帧的状态量（时间戳，位姿，速度，bg, ba）存入输出状态队列，用于在pangolin上的显示
     const PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
@@ -980,7 +1042,7 @@ void SqrtKeypointVoEstimator<Scalar_>::marginalize(
 }
 
 template <class Scalar_>
-void SqrtKeypointVoEstimator<Scalar_>::optimize() {
+bool SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'void' to 'bool' on 2023-11-13.
   if (config.vio_debug) {
     std::cout << "=================================" << std::endl;
   }
@@ -1361,14 +1423,19 @@ void SqrtKeypointVoEstimator<Scalar_>::optimize() {
 
     std::cout << "=================================" << std::endl;
   }
+
+  return converged; // 2023-11-13.
 }
 
 template <class Scalar_>
-void SqrtKeypointVoEstimator<Scalar_>::optimize_and_marg(
+bool SqrtKeypointVoEstimator<Scalar_>::optimize_and_marg( // change return type from 'void' to 'bool' on 2023-11-13.
     const std::map<int64_t, int>& num_points_connected,
     const std::unordered_set<KeypointId>& lost_landmaks) {
-  optimize();
+  // optimize();
+  bool converged = optimize();
   marginalize(num_points_connected, lost_landmaks);
+
+  return converged; // 2023-11-13
 }
 
 template <class Scalar_>

@@ -235,6 +235,17 @@ struct PoseStateWithLin {
     }
   }
 
+  // 2023-11-14
+  inline void setPose(const SE3& T_w_i)
+  {
+    if (!linearized) {
+      pose_linearized.T_w_i = T_w_i;
+    } else {
+      T_w_i_current = T_w_i;
+    }
+  }
+  // the end.
+
   inline const SE3& getPoseLin() const { return pose_linearized.T_w_i; }
 
   inline void applyInc(const VecN& inc) {

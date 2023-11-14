@@ -12,8 +12,10 @@
 
 using namespace wx;
 
+bool USE_IMU { true };
 
-CRos2IO::CRos2IO()
+
+CRos2IO::CRos2IO(bool use_imu)
   : Node("CRos2IO")
   , sub_image0_(this, "/image_left")
   , sub_image1_(this, "/image_right")
@@ -21,7 +23,9 @@ CRos2IO::CRos2IO()
   , sub_image1_info_(this, "/image_right_info")
   // , sync_stereo_(sub_image0_, sub_image1_, sub_image0_info_, sub_image1_info_, 10) // method 1
 {
+  use_imu_ = use_imu;
   //std::cout << "create imu subscription\n";
+  if(use_imu_)
   sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
     "/imu", 10, std::bind(&CRos2IO::imu_callback, this, _1));
 
@@ -114,6 +118,7 @@ void CRos2IO::imu_callback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) const
   double ry = imu_msg->angular_velocity.y;
   double rz = imu_msg->angular_velocity.z;
 
+#if USE_TIGHT_COUPLING
   int64_t t_ns = imu_msg->header.stamp.nanosec + imu_msg->header.stamp.sec * 1e9;
   basalt::ImuData<double>::Ptr data(new basalt::ImuData<double>);
   data->t_ns = t_ns;
@@ -121,13 +126,17 @@ void CRos2IO::imu_callback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) const
   data->gyro = Vector3d(rx, ry, rz);
 
   feedImu_(data);
-/*
+
+#else // LOOSE_COUPLING
+  double t = imu_msg->header.stamp.sec + imu_msg->header.stamp.nanosec * (1e-9);
   Vector3d acc(dx, dy, dz);
   Vector3d gyr(rx, ry, rz);
-  imu_.inputIMU(t, acc, gyr);
+  inputIMU_(t, acc, gyr);
 
-  pg_.inputIMU(t, acc, gyr);
-*/
+  // pg_.inputIMU(t, acc, gyr);
+
+#endif
+
 #if 0
   double t = imu_msg->header.stamp.sec + imu_msg->header.stamp.nanosec * (1e-9);
   char szTime[60] = { 0 };

@@ -80,9 +80,11 @@ namespace mf = message_filters;
 class CRos2IO : public rclcpp::Node
 {
 public:    
-    CRos2IO();
+    CRos2IO(bool use_imu);
     void PublishPoints(basalt::VioVisualizationData::Ptr data);
     void PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data);
+    // void SetImu(bool bl);
+    //bool Imu() const { return use_imu_ };
 
 private:    
     void imu_callback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) const; 
@@ -111,8 +113,10 @@ public:
     std::function<void(basalt::OpticalFlowInput::Ptr)> feedImage_;
     std::function<void(basalt::ImuData<double>::Ptr)> feedImu_;
     std::function<void(void)> stop_;
+    std::function<void(double t, const Vector3d &linearAcceleration, const Vector3d &angularVelocity)>inputIMU_;
 
 private:
+    bool use_imu_ = false;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
     mf::Subscriber<sensor_msgs::msg::Image> sub_image0_;
     mf::Subscriber<sensor_msgs::msg::Image> sub_image1_;

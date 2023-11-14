@@ -6,10 +6,10 @@
 
 //#include <sensor_msgs/Imu.h> // comment - wxliu 2023-6-16
 
-#include "src/factor/imu_factor.h"
-#include "src/factor/pose_local_parameterization.h"
-#include "src/factor/integration_base.h"
-#include "src/utility/utility.h"
+#include "../factor/imu_factor.h"
+#include "../factor/pose_local_parameterization.h"
+#include "../factor/integration_base.h"
+#include "../utility/utility.h"
 #include <sophus/se3.hpp>
 #include <functional>
 #include <map>
