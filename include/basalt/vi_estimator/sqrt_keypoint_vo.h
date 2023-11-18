@@ -203,6 +203,8 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
 
   void debug_finalize() override;
 
+  void SetFirstVisualPose(); // 2023-11-18.
+
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
  private:

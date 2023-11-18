@@ -158,6 +158,15 @@ endif()
 
 #set(CMAKE_CXX_FLAGS "-Wno-error=deprecated-declarations -Wno-deprecated-declarations ") # lwx add but no useeeeeeeeeeeeeeeeeee
 
+
+# for gdb debug 2023-11-17.
+# SET(CMAKE_BUILD_TYPE "Debug")
+# SET(CMAKE_BUILD_TYPE "Release")
+# SET(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb")
+# the end.
+
+
+
 # Set platform / compiler specific compile flags and checks
 if(APPLE)
   # Need to investigate how to reliably detect and use OpenMP on macOS...

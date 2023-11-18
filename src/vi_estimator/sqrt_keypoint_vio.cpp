@@ -154,6 +154,7 @@ void SqrtKeypointVioEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg_,
   Vec3 bg_init = bg_.cast<Scalar>();
   Vec3 ba_init = ba_.cast<Scalar>();
 
+  // 后端处理线程函数，以lambda表达式的方式定义函数指针
   auto proc_func = [&, bg = bg_init, ba = ba_init] {
     OpticalFlowResult::Ptr prev_frame, curr_frame;
     typename IntegratedImuMeasurement<Scalar>::Ptr meas;

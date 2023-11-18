@@ -12,28 +12,27 @@
 
 using namespace wx;
 
-bool USE_IMU { true };
-
-
 CRos2IO::CRos2IO(bool use_imu)
   : Node("CRos2IO")
   , sub_image0_(this, "/image_left")
   , sub_image1_(this, "/image_right")
-  , sub_image0_info_(this, "/image_left_info")
-  , sub_image1_info_(this, "/image_right_info")
+  // , sub_image0_info_(this, "/image_left_info")
+  // , sub_image1_info_(this, "/image_right_info")
   // , sync_stereo_(sub_image0_, sub_image1_, sub_image0_info_, sub_image1_info_, 10) // method 1
 {
   use_imu_ = use_imu;
   //std::cout << "create imu subscription\n";
+/*  
   if(use_imu_)
   sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
     "/imu", 10, std::bind(&CRos2IO::imu_callback, this, _1));
-
+*/
 
   //std::cout << "create image subscription\n";
   // sync_stereo_.registerCallback(&CRos2IO::StereoCb, this); // method 1
 
-  sync_stereo_.emplace(sub_image0_, sub_image1_, sub_image0_info_, sub_image1_info_, 5); // method 2
+  // sync_stereo_.emplace(sub_image0_, sub_image1_, sub_image0_info_, sub_image1_info_, 5); // method 2
+  sync_stereo_.emplace(sub_image0_, sub_image1_, 5); // method 2
 /*  
   sync_stereo_->registerCallback(
     boost::bind(&CRos2IO::StereoCb, this, _1, _2, _3, _4));
@@ -42,7 +41,7 @@ CRos2IO::CRos2IO(bool use_imu)
 
   pub_point_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
     "/point_cloud2", 10);
-  pub_odom_ = this->create_publisher<nav_msgs::msg::Odometry>("/odom", 10);
+  pub_odom_ = this->create_publisher<nav_msgs::msg::Odometry>("/pose_odom", 10);
 
  #if 0 
   // 用于停止ros2节点
@@ -53,22 +52,31 @@ CRos2IO::CRos2IO(bool use_imu)
   );
 #endif
 
+  path_msg_.poses.reserve(1024); // reserve的作用是更改vector的容量（capacity），使vector至少可以容纳n个元素。
+                                 // 如果n大于vector当前的容量，reserve会对vector进行扩容。其他情况下都不会重新分配vector的存储空间
+
+  pub_path_ = this->create_publisher<nav_msgs::msg::Path>("/path_odom", 2);
 
 
-/*  
-  //同一个组别，类型设置为Reentrant
-  rclcpp::CallbackGroup::SharedPtr callback_group_sub_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-  auto sub_opt = rclcpp::SubscriptionOptions();
-  sub_opt.callback_group = callback_group_sub_;
 
-  sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS(), imu_callback, sub_opt);
-*/  
+  if(use_imu_)
+  {
+    //同一个组别，类型设置为Reentrant
+    rclcpp::CallbackGroup::SharedPtr callback_group_sub_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    auto sub_opt = rclcpp::SubscriptionOptions();
+    sub_opt.callback_group = callback_group_sub_;
+
+    // sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS(), imu_callback, sub_opt);
+    sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS(), std::bind(&CRos2IO::imu_callback, this, _1), sub_opt);
+  }
+  
+ 
 }
 
 void CRos2IO::StereoCb(const sensor_msgs::msg::Image::SharedPtr &image0_ptr,
-  const sensor_msgs::msg::Image::SharedPtr &image1_ptr,
+  const sensor_msgs::msg::Image::SharedPtr &image1_ptr/*,
   const sensor_pub::msg::ImageInfo::SharedPtr &image0_info_ptr,
-  const sensor_pub::msg::ImageInfo::SharedPtr &image1_info_ptr)
+  const sensor_pub::msg::ImageInfo::SharedPtr &image1_info_ptr*/)
 {
   //std::cout << "received images.\n";
   
@@ -213,6 +221,56 @@ void CRos2IO::PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data)
 
   // 发布位姿
   pub_odom_->publish(odom_msg);
+
+  
+}
+
+void CRos2IO::Reset()
+{
+    path_msg_.poses.clear();
+    path_msg_.poses.reserve(1024);
+}
+
+void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
+{  
+  geometry_msgs::msg::PoseStamped pose_msg;
+  // pose_msg.header.stamp = time;  // 帧采集时间
+  pose_msg.header.stamp = this->now();
+  pose_msg.header.frame_id = "odom";
+  // Sophus2Ros(tf, pose_msg.pose);
+  pose_msg.pose.position.x = data->T_w_i.translation().x();
+  pose_msg.pose.position.y = data->T_w_i.translation().y();
+  pose_msg.pose.position.z = data->T_w_i.translation().z();
+  pose_msg.pose.orientation.x = data->T_w_i.unit_quaternion().x();
+  pose_msg.pose.orientation.y = data->T_w_i.unit_quaternion().y();
+  pose_msg.pose.orientation.z = data->T_w_i.unit_quaternion().z();
+  pose_msg.pose.orientation.w = data->T_w_i.unit_quaternion().w();
+
+
+  if (pub_odom_ != nullptr && pub_odom_->get_subscription_count() > 0)
+  {
+    nav_msgs::msg::Odometry odom_msg;
+    // odom_msg.header.stamp = time;
+    // odom_msg.header.frame_id = "odom";
+    odom_msg.header = pose_msg.header;
+    odom_msg.pose.pose = pose_msg.pose;
+
+    // 发布位姿
+    pub_odom_->publish(odom_msg);
+  }
+ 
+  if (pub_path_ == nullptr || pub_path_->get_subscription_count() == 0)
+    return ;
+
+  // 发布轨迹   path_odom话题
+  path_msg_.header.stamp = this->now();
+  path_msg_.header.frame_id = "odom";
+  path_msg_.poses.push_back(pose_msg);
+  pub_path_->publish(path_msg_);
+
+  // std::cout << " postion: " << pose_msg.pose.position.x << ", " 
+  //   << pose_msg.pose.position.y << ", " << pose_msg.pose.position.z << std::endl;
+
 }
 
 #ifdef _TEST_ROS2_IO

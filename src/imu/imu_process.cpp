@@ -3,10 +3,11 @@
 #include "imu_process.h"
 #include "../wx_system.h"
 
-extern bool USE_IMU;
+// extern bool USE_IMU;
+constexpr bool USE_IMU { true };
 
 namespace wx {
-struct ImuProcess imu_; // wxliu 2023-6-16.
+// struct ImuProcess imu_; // wxliu 2023-6-16.
 }
 
 using namespace wx;
@@ -222,12 +223,12 @@ bool ImuProcess::ProcessData(double current_time) noexcept // wxliu 2023-6-12
         //const Sophus::SE3d TWC0(R_WC0, t_WC0);  // comment 2023-7-11
 
         Eigen::JacobiSVD<Eigen::Matrix3d> svd(R_WC0, Eigen::ComputeFullU | Eigen::ComputeFullV);
-      Eigen::Matrix3d U = svd.matrixU();
-      Eigen::Matrix3d V = svd.matrixV();
-      Eigen::Matrix3d R_ = U * (V.transpose());
-      if (R_.determinant() < 0) {
-        R_ = -R_;
-      }
+        Eigen::Matrix3d U = svd.matrixU();
+        Eigen::Matrix3d V = svd.matrixV();
+        Eigen::Matrix3d R_ = U * (V.transpose());
+        if (R_.determinant() < 0) {
+            R_ = -R_;
+        }
         
         // 2023-7-11
         //Sophus::SE3d TWC0(R_WC0, t_WC0);
@@ -316,6 +317,7 @@ bool ImuProcess::ProcessData(double current_time) noexcept // wxliu 2023-6-12
 
 void ImuProcess::UpdateImuPose(const Sophus::SE3d& T_w_cl) noexcept
 {
+    // std::cout << std::boolalpha << "use_imu_pose = " << use_imu_pose << std::endl;
     if(!use_imu_pose)
     {
         const Sophus::SE3d& tf = T_w_cl;
@@ -330,6 +332,10 @@ void ImuProcess::UpdateImuPose(const Sophus::SE3d& T_w_cl) noexcept
         // 这里的c0指代world系
         Rs[frame_count] = RCam * ric[0].transpose();
         Ps[frame_count] = -RCam * ric[0].transpose() * tic[0] + PCam;
+/*
+        std::cout << "T_w_cl.translation = " << tf.translation().transpose() << std::endl
+            << "Ps = " << Ps[frame_count].transpose() << std::endl;
+        */
     }
 
 }
@@ -365,6 +371,8 @@ void ImuProcess::NonlinearOptimization(double current_time)
         for (int i = 0; i <= WINDOW_SIZE; i++) {
           // LOG(INFO) << "[lwx] i=" << i << "  Bgs[i]=" << Bgs[i].transpose()
           // << " pre_integrations[i]=" << pre_integrations[i] << std::endl;
+          std::cout << "[lwx] i=" << i << "  Bgs[i]=" << Bgs[i].transpose()
+            << " pre_integrations[i]=" << pre_integrations[i] << std::endl;
           pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
           // pre_integrations[i]->repropagate(Vector3d::Zero(),
           // Vector3d(-0.0013659, -0.000218357, 0.000811628)); // for test.
@@ -375,7 +383,7 @@ void ImuProcess::NonlinearOptimization(double current_time)
         solver_flag = NON_LINEAR;
 
         //is_not_horizontal_reboot = false; // 2023-5-16.
-        SetNotHorizontalReboot_(false);
+        // SetNotHorizontalReboot_(false); // 2023-11-17.
 
         /*
         optimization();
@@ -399,9 +407,9 @@ void ImuProcess::NonlinearOptimization(double current_time)
     }
 
     else if (solver_flag == NON_LINEAR) {
-      //std::cout << "before optimization: " << " Ps[frame_count]:" << Ps[frame_count].transpose() << " Bas[frame_count]:" << Bas[frame_count].transpose() << std::endl;
+      std::cout << "before optimization: " << " Ps[frame_count]:" << Ps[frame_count].transpose() << " Bas[frame_count]:" << Bas[frame_count].transpose() << std::endl;
       optimization();
-      //std::cout << "after optimization: " << " Ps[frame_count]:" << Ps[frame_count].transpose() << " Bas[frame_count]:" << Bas[frame_count].transpose() << std::endl;
+      std::cout << "after optimization: " << " Ps[frame_count]:" << Ps[frame_count].transpose() << " Bas[frame_count]:" << Bas[frame_count].transpose() << std::endl;
     }
 }
 
@@ -530,6 +538,7 @@ void ImuProcess::solveGyroscopeBias(vector<pair<double, ImageFrame>> &all_image_
     vector<pair<double, ImageFrame>>::iterator frame_j;
 
     //LOG(INFO) << "[lwx] solveGyroscopeBias all_image_frame.size()=" << all_image_frame.size() << std::endl;
+    // std::cout << "[lwx] solveGyroscopeBias all_image_frame.size()=" << all_image_frame.size() << std::endl;
 
     for (frame_i = all_image_frame.begin(); next(frame_i) != all_image_frame.end(); frame_i++)
     {
@@ -542,13 +551,15 @@ void ImuProcess::solveGyroscopeBias(vector<pair<double, ImageFrame>> &all_image_
         tmp_A = frame_j->second.pre_integration->jacobian.template block<3, 3>(O_R, O_BG);
 
         //LOG(INFO) << "[lwx] tmp_A=" << std::endl << tmp_A << std::endl;
+        // std::cout << "[lwx] tmp_A=" << std::endl << tmp_A << std::endl;
 
         tmp_b = 2 * (frame_j->second.pre_integration->delta_q.inverse() * q_ij).vec();
         A += tmp_A.transpose() * tmp_A;
         b += tmp_A.transpose() * tmp_b;
     }
+    std::cout << "solve delta bg:\n";
     delta_bg = A.ldlt().solve(b);
-    std::cout << "gyroscope bias initial calibration " << delta_bg.transpose();
+    std::cout << "gyroscope bias initial calibration " << delta_bg.transpose() << std::endl;
 
     for (int i = 0; i <= WINDOW_SIZE; i++)
         Bgs[i] += delta_bg;
@@ -595,10 +606,10 @@ bool ImuProcess::getIMUInterval(double t0, double t1, vector<pair<double, Eigen:
 
 void ImuProcess::inputIMU(double t, const Vector3d &linearAcceleration, const Vector3d &angularVelocity)
 {
-  if(!wx::sys_cfg_.use_imu)
-  {
-    return ;
-  }
+    if(!wx::sys_cfg_.use_imu)
+    {
+        return ;
+    }
 
     mBuf.lock();
     accBuf.push(std::make_pair(t, linearAcceleration));
@@ -651,6 +662,7 @@ void ImuProcess::processIMU(double t, double dt, const Vector3d &linear_accelera
         pre_integrations[frame_count] = new IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
 
         //LOG(INFO) << "[lwx] frame_count=" << frame_count << "  pre_integrations[frame_count]=" << pre_integrations[frame_count] << std::endl;
+        std::cout << "[lwx] frame_count=" << frame_count << "  pre_integrations[frame_count]=" << pre_integrations[frame_count] << std::endl;
     }
     if (frame_count != 0)
     {

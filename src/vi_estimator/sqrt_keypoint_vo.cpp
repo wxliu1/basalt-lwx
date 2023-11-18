@@ -126,6 +126,42 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(
 }
 
 template <class Scalar_>
+void SqrtKeypointVoEstimator<Scalar_>::SetFirstVisualPose() // 2023-11-18.
+{
+  // std::cout << std::boolalpha << "initFirstPoseFlag=" << imu->InitFirstPoseFlag() << std::endl;
+
+  if (!g_imu->InitFirstPoseFlag()) {
+    g_imu->SetFirstPoseFlag(true);
+
+    Eigen::Matrix3d R_WC0;
+/*    
+    R_WC0 << 1, 0, 0, 0, 0, 1, 0, -1,
+        0;  // 如果是相机模式，第一个位姿绕x轴旋转-90度，使相机z轴对应着世界系y轴，即镜头前方对应世界系y轴方向。
+            // 或者直接把这个位姿，加到FrameState的初始位姿T_w_cl(R_WC0,
+            // t_WC0)中
+*/
+    R_WC0 << 0, 0, 1, 0, 1, 0, -1, 0, 0; // 绕y轴逆时针旋转90度，使镜头对着 world frame 的 x 轴 
+
+    Eigen::Matrix3d R_WC0_tmp;
+    R_WC0_tmp << 1, 0, 0, 0, 0, 1, 0, -1,0; // 再绕x轴旋转-90度 
+
+    R_WC0 = R_WC0_tmp * R_WC0;
+
+    Vector3d t_WC0 = Vector3d(0, 0, 0);
+
+    const Sophus::SE3d TWC0(R_WC0, t_WC0);
+    std::cout << "[lwx] first camera pose: TWC0= \n"
+              << TWC0.matrix() << std::endl
+              << std::endl;
+
+    // vio->setT_w_i_init(TWC0);
+    this->setT_w_i_init(TWC0);
+
+  }
+
+}
+
+template <class Scalar_>
 void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
                                                   const Eigen::Vector3d& ba) {
   UNUSED(bg);
@@ -156,6 +192,20 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
         ImuData<double>::Ptr d;
         imu_data_queue.pop(d);
       }
+
+      // 2023-11-18
+      if (sys_cfg_.use_imu) {
+        // nanosecond to second
+        double curTime =  curr_frame->t_ns / 1e9  + sys_cfg_.td;
+        bool bl = g_imu->ProcessData(curTime);
+        if(!bl) continue ;
+        
+      }
+      else {
+      
+        SetFirstVisualPose();
+      }
+      // the end.
 
       if (!initialized) { // initialized初始为false. 第一帧初始化
         last_state_t_ns = curr_frame->t_ns; // 图像时间戳
@@ -263,6 +313,13 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   // save results
   prev_opt_flow_res[opt_flow_meas->t_ns] = opt_flow_meas; // 保存当前帧的光流结果
 
+  // 2023-11-15.
+  int cam0_num_observations = opt_flow_meas->observations[0].size();
+  if(cam0_num_observations < 6)
+  std::cout << "cam0 observation count: " << opt_flow_meas->observations[0].size() << std::endl;
+  // the end.
+  
+
   // For feature tracks that exist as landmarks, add the new frames as
   // additional observations. For every host frame, compute how many of it's
   // landmarks are tracked by the current frame: this will help later during
@@ -320,9 +377,10 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
       frames_after_kf > config.vio_min_frames_after_kf)
     take_kf = true; // 如果当前帧应该成为关键帧，那么take_kf为true.
 
-  if (config.vio_debug) {
-    std::cout << "connected0 " << connected0 << " unconnected0 "
-              << unconnected_obs0.size() << std::endl;
+  //if (config.vio_debug) {
+  if (config.vio_debug || cam0_num_observations < 6) {
+    std::cout << "connected0: " << connected0 << " unconnected0: "
+              << unconnected_obs0.size() << std::boolalpha << " take_kf: " << take_kf << std::endl;
   }
 
   // step2 通过连接的特征点（其实就是追踪到的点）优化单帧（当前帧）位姿 //?这里面具体如何优化值得细看。
@@ -470,45 +528,66 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   // step5 优化和边缘化
   //optimize_and_marg(num_points_connected, lost_landmaks);
   bool converged = optimize_and_marg(num_points_connected, lost_landmaks);
+/*
+  if(!converged)
+  {
+    std::cout << std::boolalpha << "converged=" << converged << std::endl;
+  }
+*/
+
+  // test 2023-11-17
+  if(cam0_num_observations < 6)
+  {
+    std::cout << std::boolalpha << "converged=" << converged 
+      << " lost_landmaks: " << lost_landmaks.size() << std::endl;
+  }
+  // the end.
+
 #if 1
   // std::cout << std::boolalpha << "converged=" << converged << std::endl;
   // 2023-11-13
-  if (sys_cfg_.use_imu) {
-  if(converged)
+  if (sys_cfg_.use_imu) 
   {
-    g_imu->SetUseImuPose(false);
-  }
-  else
-  {
-    std::cout << std::boolalpha << "converged=" << converged << std::endl;
-    if (g_imu->GetSolverFlag() == INITIAL) {
-      g_imu->SetUseImuPose(false);
-      g_imu->clearState();
-
-      // if(is_not_horizontal_reboot == true)
-      // {
-      //   g_imu->SetFirstPoseFlag(true);
-      // }
-      // else
-      // {  
-      //   pub_odom_.Reset();
-      // }
-    }
-
-    if (!g_imu->UseImuPose()) 
+    if(converged)
     {
-      last_processed_t_ns = last_state_t_ns;
-      stats_sums_.add("measure", t_total.elapsed()).format("ms");
-
-      return false;
+      g_imu->SetUseImuPose(false);
     }
-  }
+    //else
+    if(converged == false || cam0_num_observations < 6)
+    {
+      std::cout << std::boolalpha << "converged=" << converged << std::endl;
+      if (g_imu->GetSolverFlag() == INITIAL) {
+        g_imu->SetUseImuPose(false);
+        g_imu->clearState();
 
-  //if (sys_cfg_.use_imu) {
+        // if(is_not_horizontal_reboot == true)
+        // {
+        //   g_imu->SetFirstPoseFlag(true);
+        // }
+        // else
+        // {  
+        //   pub_odom_.Reset();
+        // }
+      }
+      else
+      {
+        g_imu->SetUseImuPose(true);
+      }
+
+      if (!g_imu->UseImuPose()) 
+      {
+        last_processed_t_ns = last_state_t_ns;
+        stats_sums_.add("measure", t_total.elapsed()).format("ms");
+
+        return false;
+      }
+    }
+
     const PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
     g_imu->UpdateImuPose(p.getPose().template cast<double>());
     g_imu->NonlinearOptimization(last_state_t_ns / 1e9);
     g_imu->slideWindow(marg_frame_index); // 'marg_frame_index' should be a index of removing frame 2023-11-14.
+
   }
 
   if(g_imu->UseImuPose())

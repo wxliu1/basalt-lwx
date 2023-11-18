@@ -20,17 +20,17 @@ extern double GYR_N, GYR_W;
 
 extern Eigen::Vector3d G;
 
-  enum StateOrder
-  {
-    O_P = 0,
-    O_R = 3,
-    O_V = 6,
-    O_BA = 9,
-    O_BG = 12
-  };
-  // the end.
+enum StateOrder
+{
+  O_P = 0,
+  O_R = 3,
+  O_V = 6,
+  O_BA = 9,
+  O_BG = 12
+};
 
-enum SIZE_PARAMETERIZATION // 2023-4-4
+
+enum SIZE_PARAMETERIZATION
 {
     SIZE_POSE = 7,
     SIZE_SPEEDBIAS = 9,
@@ -50,7 +50,6 @@ struct SystemCfg{
     SystemCfg() = default;
     void ReadSystemCfg();
   };
-  // the end.
 
   extern SystemCfg sys_cfg_;
 

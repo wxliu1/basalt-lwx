@@ -164,7 +164,7 @@ private:
 
 }; // struct ImuProcess
 
-extern struct ImuProcess imu_; // wxliu 2023-6-16.
+// extern struct ImuProcess imu_; // wxliu 2023-6-16.
 
 } // namespace wx
 

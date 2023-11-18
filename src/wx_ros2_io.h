@@ -23,6 +23,8 @@
 #include <sensor_pub/msg/image_info.hpp>
 #include <std_msgs/msg/empty.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <nav_msgs/msg/path.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
@@ -85,15 +87,18 @@ public:
     void PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data);
     // void SetImu(bool bl);
     //bool Imu() const { return use_imu_ };
+    void Reset();
+    //void PublishPoint(basalt::VioVisualizationData::Ptr data); // TODO: transfer timestamp of sampling.
+    void PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data);
 
 private:    
     void imu_callback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) const; 
     //void imu_callback(const sensor_msgs::msg::Imu & msg); const
 
     void StereoCb(const sensor_msgs::msg::Image::SharedPtr &image0_ptr,
-        const sensor_msgs::msg::Image::SharedPtr &image1_ptr,
+        const sensor_msgs::msg::Image::SharedPtr &image1_ptr/*,
         const sensor_pub::msg::ImageInfo::SharedPtr &image0_info_ptr,
-        const sensor_pub::msg::ImageInfo::SharedPtr &image1_info_ptr);
+        const sensor_pub::msg::ImageInfo::SharedPtr &image1_info_ptr*/);
 
 #if 0
     // sys_stop_sub回调函数，用于stop
@@ -130,8 +135,8 @@ private:
     mf::TimeSynchronizer<sensor_msgs::msg::Image, sensor_msgs::msg::Image,
         sensor_pub::msg::ImageInfo, sensor_pub::msg::ImageInfo> sync_stereo_; // method 1
 */
-    using SyncStereo = mf::TimeSynchronizer<sensor_msgs::msg::Image, sensor_msgs::msg::Image,
-        sensor_pub::msg::ImageInfo, sensor_pub::msg::ImageInfo>;
+    using SyncStereo = mf::TimeSynchronizer<sensor_msgs::msg::Image, sensor_msgs::msg::Image/*,
+        sensor_pub::msg::ImageInfo, sensor_pub::msg::ImageInfo*/>;
     std::optional<SyncStereo> sync_stereo_; // method 2
 
 #if 0
@@ -139,6 +144,8 @@ private:
 #endif    
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_point_;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_path_;
+    nav_msgs::msg::Path path_msg_;
 
 /*
  * minimal publisher and subscriber

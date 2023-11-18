@@ -113,63 +113,13 @@ basalt::OpticalFlowBase::Ptr opt_flow_ptr;
 basalt::VioEstimatorBase::Ptr vio;
 
 // 2023-11-13
-
 ImuProcess* g_imu = nullptr;
-
-void SetFirstVisualPose(ImuProcess* imu)
-{
-  // std::cout << std::boolalpha << "initFirstPoseFlag=" << imu->InitFirstPoseFlag() << std::endl;
-
-  if (!imu->InitFirstPoseFlag()) {
-    imu->SetFirstPoseFlag(true);
-
-    Eigen::Matrix3d R_WC0;
-/*    
-    R_WC0 << 1, 0, 0, 0, 0, 1, 0, -1,
-        0;  // 如果是相机模式，第一个位姿绕x轴旋转-90度，使相机z轴对应着世界系y轴，即镜头前方对应世界系y轴方向。
-            // 或者直接把这个位姿，加到FrameState的初始位姿T_w_cl(R_WC0,
-            // t_WC0)中
-*/
-    R_WC0 << 0, 0, 1, 0, 1, 0, -1, 0, 0; // 绕y轴逆时针旋转90度，使镜头对着 world frame 的 x 轴 
-
-    Eigen::Matrix3d R_WC0_tmp;
-    R_WC0_tmp << 1, 0, 0, 0, 0, 1, 0, -1,0; // 再绕x轴旋转-90度 
-
-    R_WC0 = R_WC0_tmp * R_WC0;
-
-    Vector3d t_WC0 = Vector3d(0, 0, 0);
-
-    const Sophus::SE3d TWC0(R_WC0, t_WC0);
-    std::cout << "[lwx] first camera pose: TWC0= \n"
-              << TWC0.matrix() << std::endl
-              << std::endl;
-
-    vio->setT_w_i_init(TWC0);
-
-  }
-
-}
-
 // the end.
 
 // 2023-11-10.
 void feedImage(basalt::OpticalFlowInput::Ptr data, ImuProcess* imu) 
 {
-  if (sys_cfg_.use_imu) {
-    // nanosecond to second
-    double curTime = data->t_ns / 1e9  + sys_cfg_.td;
-    bool bl = imu->ProcessData(curTime);
-    if(!bl) return ;
-    
-  }
-  else {
-   
-    SetFirstVisualPose(imu);
-  }
-
-
   opt_flow_ptr->input_queue.push(data);
-
 }
 
 void feedImu(basalt::ImuData<double>::Ptr data) 
@@ -179,58 +129,6 @@ void feedImu(basalt::ImuData<double>::Ptr data)
 // the end.
 
 // Feed functions
-// 读取图像并喂给光流追踪: 将图像push到前端opt_flow的输入队列中
-void feed_images() {
-  std::cout << "Started input_data thread " << std::endl;
-  // 遍历数据集每一张图片
-  for (size_t i = 0; i < vio_dataset->get_image_timestamps().size(); i++) {
-    if (vio->finished || terminate || (max_frames > 0 && i >= max_frames)) {
-      // stop loop early if we set a limit on number of frames to process
-      break;
-    }
-
-    if (step_by_step) {
-      std::unique_lock<std::mutex> lk(m);
-      cv.wait(lk);
-    }
-
-    // step 1 构建光流跟踪结构体并把时间戳图像数据放进去
-    basalt::OpticalFlowInput::Ptr data(new basalt::OpticalFlowInput);
-
-    // 转换成视觉前端的输入类型
-    data->t_ns = vio_dataset->get_image_timestamps()[i];
-    data->img_data = vio_dataset->get_image_data(data->t_ns);
-
-    timestamp_to_id[data->t_ns] = i;
-
-    // step 2 塞入到输入队列中: 将数据压入到视觉前端的队列中
-    opt_flow_ptr->input_queue.push(data);
-  }
-
-  // step 3 如果运行完塞入一个空的数据，告诉后面的数据结束
-  // Indicate the end of the sequence
-  opt_flow_ptr->input_queue.push(nullptr); /// 队列中push空指针，指示图像序列的结束
-
-  std::cout << "Finished input_data thread " << std::endl;
-}
-
-// 将IMU push 到后端
-void feed_imu() {
-  for (size_t i = 0; i < vio_dataset->get_gyro_data().size(); i++) {
-    if (vio->finished || terminate) {
-      break;
-    }
-
-    basalt::ImuData<double>::Ptr data(new basalt::ImuData<double>);
-    data->t_ns = vio_dataset->get_gyro_data()[i].timestamp_ns;
-
-    data->accel = vio_dataset->get_accel_data()[i].data;
-    data->gyro = vio_dataset->get_gyro_data()[i].data;
-
-    vio->imu_data_queue.push(data);
-  }
-  vio->imu_data_queue.push(nullptr);
-}
 
 // 2023-11-11
 void sigintHandler(int sig) {
@@ -273,9 +171,13 @@ int main(int argc, char** argv) {
   CLI::App app{"App description"};
 */
 
+  sys_cfg_.ReadSystemCfg(); // 2023-11-17.
+
   // 2023-11-10
   struct TYamlIO yaml;
   yaml.ReadConfiguration();
+  std::cout << "calib_path=" << yaml.cam_calib_path << std::endl
+    << "config_path=" << yaml.config_path << std::endl;
   // the end.
 
   // 2023-11-13
@@ -325,9 +227,14 @@ int main(int argc, char** argv) {
   //const int64_t start_t_ns = vio_dataset->get_image_timestamps().front(); // comment.
   {
     // 后端初始化，选择是否使用IMU
+#if USE_TIGHT_COUPLING     
     vio = basalt::VioEstimatorFactory::getVioEstimator(
         vio_config, calib, basalt::constants::g, yaml.use_imu, yaml.use_double); // 创建后端估计器对象
-    
+#else // LOOSE_COUPLING
+    vio = basalt::VioEstimatorFactory::getVioEstimator(
+        vio_config, calib, basalt::constants::g, false, yaml.use_double);
+#endif
+
     vio->initialize(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
 
     // 后端和前端的对接 （前端光流指针指向的输出队列指针保存的是后端估计器指向的视觉数据队列的地址）
@@ -423,7 +330,8 @@ int main(int argc, char** argv) {
 
       if (!data.get()) break;
 
-      node->PublishOdometry(data); // 2023-11-11
+      //node->PublishOdometry(data); // 2023-11-11
+      node->PublishPoseAndPath(data); // 2023-11-16
       
     }
 
