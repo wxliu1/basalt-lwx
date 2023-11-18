@@ -553,10 +553,12 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
       g_imu->SetUseImuPose(false);
     }
     //else
-    if(converged == false || cam0_num_observations < 6)
+    // if(converged == false || cam0_num_observations < 6)
+    if(cam0_num_observations < 6)
     {
       std::cout << std::boolalpha << "converged=" << converged << std::endl;
-      if (g_imu->GetSolverFlag() == INITIAL) {
+      if (g_imu->GetSolverFlag() == INITIAL) 
+      {
         g_imu->SetUseImuPose(false);
         g_imu->clearState();
 

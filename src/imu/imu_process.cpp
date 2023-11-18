@@ -371,8 +371,8 @@ void ImuProcess::NonlinearOptimization(double current_time)
         for (int i = 0; i <= WINDOW_SIZE; i++) {
           // LOG(INFO) << "[lwx] i=" << i << "  Bgs[i]=" << Bgs[i].transpose()
           // << " pre_integrations[i]=" << pre_integrations[i] << std::endl;
-          std::cout << "[lwx] i=" << i << "  Bgs[i]=" << Bgs[i].transpose()
-            << " pre_integrations[i]=" << pre_integrations[i] << std::endl;
+        //   std::cout << "[lwx] i=" << i << "  Bgs[i]=" << Bgs[i].transpose()
+        //     << " pre_integrations[i]=" << pre_integrations[i] << std::endl;
           pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
           // pre_integrations[i]->repropagate(Vector3d::Zero(),
           // Vector3d(-0.0013659, -0.000218357, 0.000811628)); // for test.
@@ -407,9 +407,9 @@ void ImuProcess::NonlinearOptimization(double current_time)
     }
 
     else if (solver_flag == NON_LINEAR) {
-      std::cout << "before optimization: " << " Ps[frame_count]:" << Ps[frame_count].transpose() << " Bas[frame_count]:" << Bas[frame_count].transpose() << std::endl;
+    //   std::cout << "before optimization: " << " Ps[frame_count]:" << Ps[frame_count].transpose() << " Bas[frame_count]:" << Bas[frame_count].transpose() << std::endl;
       optimization();
-      std::cout << "after optimization: " << " Ps[frame_count]:" << Ps[frame_count].transpose() << " Bas[frame_count]:" << Bas[frame_count].transpose() << std::endl;
+    //   std::cout << "after optimization: " << " Ps[frame_count]:" << Ps[frame_count].transpose() << " Bas[frame_count]:" << Bas[frame_count].transpose() << std::endl;
     }
 }
 
@@ -662,7 +662,7 @@ void ImuProcess::processIMU(double t, double dt, const Vector3d &linear_accelera
         pre_integrations[frame_count] = new IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
 
         //LOG(INFO) << "[lwx] frame_count=" << frame_count << "  pre_integrations[frame_count]=" << pre_integrations[frame_count] << std::endl;
-        std::cout << "[lwx] frame_count=" << frame_count << "  pre_integrations[frame_count]=" << pre_integrations[frame_count] << std::endl;
+        // std::cout << "[lwx] frame_count=" << frame_count << "  pre_integrations[frame_count]=" << pre_integrations[frame_count] << std::endl;
     }
     if (frame_count != 0)
     {
