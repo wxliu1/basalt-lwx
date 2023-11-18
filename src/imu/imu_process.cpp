@@ -557,7 +557,7 @@ void ImuProcess::solveGyroscopeBias(vector<pair<double, ImageFrame>> &all_image_
         A += tmp_A.transpose() * tmp_A;
         b += tmp_A.transpose() * tmp_b;
     }
-    std::cout << "solve delta bg:\n";
+    // std::cout << "solve delta bg:\n";
     delta_bg = A.ldlt().solve(b);
     std::cout << "gyroscope bias initial calibration " << delta_bg.transpose() << std::endl;
 
