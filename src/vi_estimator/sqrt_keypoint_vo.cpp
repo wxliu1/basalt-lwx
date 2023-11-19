@@ -107,6 +107,49 @@ SqrtKeypointVoEstimator<Scalar_>::SqrtKeypointVoEstimator(
 }
 
 template <class Scalar_>
+void SqrtKeypointVoEstimator<Scalar_>::Reset()
+{
+  initialized = false;
+
+  marg_data.H.setZero(POSE_SIZE, POSE_SIZE); // POSE_SIZE = 6
+  marg_data.b.setZero(POSE_SIZE);
+
+  // Version without prior 仅用于调式和日志输出的目的
+  nullspace_marg_data.is_sqrt = marg_data.is_sqrt;
+  nullspace_marg_data.H.setZero(POSE_SIZE, POSE_SIZE); // 6 * 6的H
+  nullspace_marg_data.b.setZero(POSE_SIZE); // 6 * 1的b
+
+  // prior on pose 位姿先验
+  if (marg_data.is_sqrt) {
+    marg_data.H.diagonal().setConstant(
+        std::sqrt(Scalar(config.vio_init_pose_weight))); // marg矩阵H的对角线设置为常量'初始位姿权重'，初始值为1e8
+  } else {
+    marg_data.H.diagonal().setConstant(Scalar(config.vio_init_pose_weight));
+  }
+
+  const PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
+  T_w_i_init = p.getPose();//.template cast<double>()
+
+  frame_poses.clear();
+  frame_states.clear();
+  prev_opt_flow_res.clear();
+  num_points_kf.clear();
+  lmdb.Reset();
+  kf_ids.clear();
+  take_kf = true;
+  frames_after_kf = 0;
+  last_state_t_ns = -1;
+  marg_frame_index = -1;
+
+  drain_input_queues();
+
+  // TODO:
+  // stats_all_.Reset();
+  // stats_sums_.Reset();
+  
+}
+
+template <class Scalar_>
 void SqrtKeypointVoEstimator<Scalar_>::initialize(
     int64_t t_ns, const Sophus::SE3d& T_w_i, const Eigen::Vector3d& vel_w_i,
     const Eigen::Vector3d& bg, const Eigen::Vector3d& ba) {
@@ -538,8 +581,10 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   // test 2023-11-17
   if(cam0_num_observations < 6)
   {
-    std::cout << std::boolalpha << "converged=" << converged 
-      << " lost_landmaks: " << lost_landmaks.size() << std::endl;
+    // std::cout << std::boolalpha << "converged=" << converged 
+    //   << " lost_landmaks: " << lost_landmaks.size() << std::endl;
+
+    reset_();
   }
   // the end.
 
@@ -548,11 +593,12 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   // 2023-11-13
   if (sys_cfg_.use_imu) 
   {
-    if(converged)
+     if(converged)
+    //if(cam0_num_observations >= 6)
     {
       g_imu->SetUseImuPose(false);
     }
-    //else
+    else
     // if(converged == false || cam0_num_observations < 6)
     if(cam0_num_observations < 6)
     {

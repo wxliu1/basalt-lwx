@@ -206,8 +206,10 @@ class SqrtKeypointVioEstimator : public VioEstimatorBase,
 
   void setT_w_i_init(Sophus::SE3d Twi) // 2023-11-13.
   {
-    T_w_i_init = Twi.template cast<Scalar>();;
+    T_w_i_init = Twi.template cast<Scalar>();
   }
+
+  void Reset() {} // 2023-11-19.
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 

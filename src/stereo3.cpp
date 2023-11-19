@@ -97,7 +97,7 @@ size_t last_frame_processed = 0;
 
 tbb::concurrent_unordered_map<int64_t, int, std::hash<int64_t>> timestamp_to_id;
 
-std::mutex m;
+// std::mutex reset_mutex;
 std::condition_variable cv;
 bool step_by_step = false;
 size_t max_frames = 0;
@@ -119,7 +119,9 @@ ImuProcess* g_imu = nullptr;
 // 2023-11-10.
 void feedImage(basalt::OpticalFlowInput::Ptr data, ImuProcess* imu) 
 {
+  // reset_mutex.lock();
   opt_flow_ptr->input_queue.push(data);
+  // reset_mutex.unlock();
 }
 
 void feedImu(basalt::ImuData<double>::Ptr data) 
@@ -159,6 +161,14 @@ void stop()
     // }
 }
 // the end.
+
+void Reset()
+{
+  // reset_mutex.lock();
+  opt_flow_ptr->Reset();
+  vio->Reset();
+  // reset_mutex.unlock();
+}
 
 int main(int argc, char** argv) {
 
@@ -265,6 +275,8 @@ int main(int argc, char** argv) {
       os.close();
     }
   }
+
+  vio->reset_ = std::bind(&Reset); // 2023-11-19.
 
   // 2023-11-14
   if (sys_cfg_.use_imu) {

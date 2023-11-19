@@ -98,6 +98,18 @@ class PatchOpticalFlow : public OpticalFlowBase {
 
   ~PatchOpticalFlow() { processing_thread->join(); }
 
+  // 2023-11-19
+  void Reset()
+  {
+    t_ns = -1;
+    frame_counter = 0;
+    last_keypoint_id = 0;
+    OpticalFlowInput::Ptr curr_frame;
+    while (!input_queue.empty()) input_queue.pop(curr_frame); // drain input_queue
+    
+  }
+  // the end. 
+
   void processingLoop() {
     OpticalFlowInput::Ptr input_ptr;
 

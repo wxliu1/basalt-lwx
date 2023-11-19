@@ -39,6 +39,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <basalt/optical_flow/optical_flow.h>
 #include <basalt/utils/imu_types.h>
 
+#include <functional> // 2023-11-19.
+
 namespace basalt {
 
 
@@ -128,6 +130,7 @@ class VioEstimatorBase {
 
   virtual Sophus::SE3d getT_w_i_init() = 0;
   virtual void setT_w_i_init(Sophus::SE3d Twi) = 0; // 2023-11-13.
+  virtual void Reset() = 0; // 2023-11-19.
 
   // Legacy functions. Should not be used in the new code. 遗留函数。不应该在新代码中使用
   virtual void setMaxStates(size_t val) = 0;
@@ -135,6 +138,8 @@ class VioEstimatorBase {
 
   virtual void addIMUToQueue(const ImuData<double>::Ptr& data) = 0;
   virtual void addVisionToQueue(const OpticalFlowResult::Ptr& data) = 0;
+
+  std::function<void(void)> reset_;
 };
 
 class VioEstimatorFactory {

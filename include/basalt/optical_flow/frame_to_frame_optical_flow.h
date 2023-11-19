@@ -99,11 +99,26 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
   ~FrameToFrameOpticalFlow() { processing_thread->join(); }
 
+  // 2023-11-19
+  void Reset()
+  {
+    reset_mutex.lock();
+    t_ns = -1;
+    frame_counter = 0;
+    last_keypoint_id = 0;
+    OpticalFlowInput::Ptr curr_frame;
+    while (!input_queue.empty()) input_queue.pop(curr_frame); // drain input_queue
+    
+    reset_mutex.unlock();
+  }
+  // the end.
+
   void processingLoop() {
     OpticalFlowInput::Ptr input_ptr;
 
     // processingLoop循环处理部分：拿到一帧的数据指针、处理一帧processFrame
     while (true) {
+      reset_mutex.lock(); // 2023-11-19
       input_queue.pop(input_ptr); // 从输入流获得图片
 
       // 如果获得的图片为空，在输出队列添加一个空的元素
@@ -114,6 +129,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
       // 追踪特征点，添加特征点，剔除外点，将追踪结果push到输出队列
       processFrame(input_ptr->t_ns, input_ptr);
+      reset_mutex.unlock(); // 2023-11-19
     }
   }
 
@@ -531,6 +547,8 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   Matrix4 E;
 
   std::shared_ptr<std::thread> processing_thread;
+
+  std::mutex reset_mutex; // 2023-11-19.
 };
 
 }  // namespace basalt

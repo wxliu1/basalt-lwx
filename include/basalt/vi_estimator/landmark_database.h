@@ -138,6 +138,8 @@ class LandmarkDatabase { // 特征(路标)点数据库
     for (auto& kv : kpts) kv.second.restore();
   }
 
+  void Reset(); // 2023-11-19.
+
  private:
   using MapIter =
       typename Eigen::aligned_unordered_map<KeypointId,

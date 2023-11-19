@@ -39,6 +39,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace basalt {
 
+// 2023-11-19
+template <class Scalar_>
+void LandmarkDatabase<Scalar_>::Reset()
+{
+  kpts.clear();
+  observations.clear();
+}
+// the end.  
+
 template <class Scalar_>
 void LandmarkDatabase<Scalar_>::addLandmark(KeypointId lm_id,
                                             const Keypoint<Scalar> &pos) {

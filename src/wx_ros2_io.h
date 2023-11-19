@@ -28,7 +28,6 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
-#include <functional>
 #include <basalt/optical_flow/optical_flow.h>
 #include <basalt/imu/imu_types.h>
 #include <basalt/vi_estimator/vio_estimator.h>

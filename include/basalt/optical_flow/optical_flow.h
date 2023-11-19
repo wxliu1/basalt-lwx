@@ -87,6 +87,8 @@ class OpticalFlowBase {
   tbb::concurrent_bounded_queue<OpticalFlowResult::Ptr>* output_queue = nullptr;
 
   Eigen::MatrixXf patch_coord;
+
+  virtual void Reset() = 0; // 2023-11-19.
 };
 
 // 光流的构造：1.点到点光流 2.帧到帧光流
