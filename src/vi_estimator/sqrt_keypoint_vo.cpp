@@ -61,6 +61,12 @@ extern ImuProcess* g_imu;
 #endif
 // the end.
 
+// 2023-11-21
+#include <condition_variable>
+extern std::mutex vio_m;
+extern std::condition_variable vio_cv;
+// the end.
+
 namespace basalt {
 
 template <class Scalar_>
@@ -109,15 +115,36 @@ SqrtKeypointVoEstimator<Scalar_>::SqrtKeypointVoEstimator(
 template <class Scalar_>
 void SqrtKeypointVoEstimator<Scalar_>::Reset()
 {
+  // move here for waiting. 2023-11-21.
+  std::unique_lock<std::mutex> lk(vio_m);
+  vio_cv.wait(lk);
+  // the end.
+
+  std::cout << "reset backend.\n";
   initialized = false;
 
+  marg_data.is_sqrt = config.vio_sqrt_marg;
   marg_data.H.setZero(POSE_SIZE, POSE_SIZE); // POSE_SIZE = 6
   marg_data.b.setZero(POSE_SIZE);
+  if (marg_data.is_sqrt) {
+    marg_data.H.diagonal().setConstant(
+        std::sqrt(Scalar(config.vio_init_pose_weight))); // marg矩阵H的对角线设置为常量'初始位姿权重'，初始值为1e8
+  } else {
+    marg_data.H.diagonal().setConstant(Scalar(config.vio_init_pose_weight));
+  }
+
+  marg_data.order.abs_order_map.clear();
+  marg_data.order.total_size = 0;
+  marg_data.order.items = 0;
 
   // Version without prior 仅用于调式和日志输出的目的
   nullspace_marg_data.is_sqrt = marg_data.is_sqrt;
   nullspace_marg_data.H.setZero(POSE_SIZE, POSE_SIZE); // 6 * 6的H
   nullspace_marg_data.b.setZero(POSE_SIZE); // 6 * 1的b
+
+  nullspace_marg_data.order.abs_order_map.clear();
+  nullspace_marg_data.order.total_size = 0;
+  nullspace_marg_data.order.items = 0;
 
   // prior on pose 位姿先验
   if (marg_data.is_sqrt) {
@@ -141,7 +168,14 @@ void SqrtKeypointVoEstimator<Scalar_>::Reset()
   last_state_t_ns = -1;
   marg_frame_index = -1;
 
+  lambda = config.vio_lm_lambda_initial;
+  min_lambda = config.vio_lm_lambda_min;
+  max_lambda = config.vio_lm_lambda_max;
+  lambda_vee = 2;
+
   drain_input_queues();
+
+  isResetAlgorithm_ = true;
 
   // TODO:
   // stats_all_.Reset();
@@ -215,6 +249,7 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
     bool add_pose = false;
 
     while (true) {
+      
       // get next optical flow result (blocking if queue empty) 获取光流结果，如果队列为空会阻塞
       vision_data_queue.pop(curr_frame);
 
@@ -251,6 +286,8 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
       // the end.
 
       if (!initialized) { // initialized初始为false. 第一帧初始化
+        // std::cout << " back end init. " << std::boolalpha << "add_pose=" << add_pose << " prev_frame=" << prev_frame << std::endl;
+        std::cout << " back end init. " << " first cam0 observation count: " << curr_frame->observations[0].size() << std::endl;
         last_state_t_ns = curr_frame->t_ns; // 图像时间戳
 
         frame_poses[last_state_t_ns] =
@@ -265,6 +302,13 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
 
         std::cout << "Setting up filter: t_ns " << last_state_t_ns << std::endl;
         std::cout << "T_w_i\n" << T_w_i_init.matrix() << std::endl;
+        
+        #if 0
+        // for test 2023-11-20.
+        int cam0_num_observations = curr_frame->observations[0].size();
+        // if(cam0_num_observations <= 0) continue ;
+        // the end.
+        #endif
 
         if (config.vio_debug || config.vio_extended_logging) {
           logMargNullspace();
@@ -277,8 +321,32 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
         add_pose = true;
       }
 
-      measure(curr_frame, add_pose); // 测量: 后端优化的入口
+      //measure(curr_frame, add_pose); // 测量: 后端优化的入口
+      bool bl = measure(curr_frame, add_pose); // 测量: 后端优化的入口 // modified 2023-11-20
       prev_frame = curr_frame;
+
+      // 2023-11-20
+      // if(isResetAlgorithm_)
+      if(!bl)
+      {
+        isResetAlgorithm_ = false;
+        add_pose = false;
+        prev_frame = nullptr;
+        #if 0
+        std::chrono::milliseconds dura(100);
+        // std::chrono::milliseconds dura(40);
+        std::this_thread::sleep_for(dura);
+        while (!vision_data_queue.empty()) vision_data_queue.pop(curr_frame);
+        std::cout << "reset backend thread.\n";
+        #endif
+
+        // std::unique_lock<std::mutex> lk(vio_m);
+        // vio_cv.wait(lk);
+        std::cout << "reset backend thread.\n";
+      }
+      
+      // the end.
+      
     }
 
     if (out_vis_queue) out_vis_queue->push(nullptr);
@@ -579,28 +647,48 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
 */
 
   // test 2023-11-17
-  if(cam0_num_observations < 6)
-  {
+  //if(cam0_num_observations < 6)
+  //{
     // std::cout << std::boolalpha << "converged=" << converged 
     //   << " lost_landmaks: " << lost_landmaks.size() << std::endl;
 
-    reset_();
-  }
+    // reset_(); // 2023-11-19.
+  //}
   // the end.
 
 #if 1
+
+  // 2023-11-21
+  bool isBigTranslation = false;
+  const PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
+  const auto delta_tf = T_w_i_prev.inverse() * p.getPose();
+  Vector3d P = delta_tf.template cast<double>().translation();
+  double xdiff = P.x();
+  double ydiff = P.y();
+  // double zdiff = P.z();
+  constexpr double dt_threshold = 1.0; // 5.0; // 1.0
+  double norm = sqrt(xdiff * xdiff + ydiff * ydiff);
+  //if(fabs(xdiff) > dt_threshold || fabs(ydiff) > dt_threshold) // neglect z axis
+  if(norm > dt_threshold) // neglect z axis
+  {
+    std::cout << "[lwx] BIG translation.\n";
+    isBigTranslation = true;
+  }
+  // the end.
+
   // std::cout << std::boolalpha << "converged=" << converged << std::endl;
   // 2023-11-13
   if (sys_cfg_.use_imu) 
   {
-     if(converged)
-    //if(cam0_num_observations >= 6)
+    //  if(converged)
+    //if(converged || cam0_num_observations >= 6)
+    if(!isBigTranslation && (converged || cam0_num_observations >= 6))
     {
       g_imu->SetUseImuPose(false);
     }
     else
     // if(converged == false || cam0_num_observations < 6)
-    if(cam0_num_observations < 6)
+    // if(cam0_num_observations < 6)
     {
       std::cout << std::boolalpha << "converged=" << converged << std::endl;
       if (g_imu->GetSolverFlag() == INITIAL) 
@@ -627,12 +715,21 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
         last_processed_t_ns = last_state_t_ns;
         stats_sums_.add("measure", t_total.elapsed()).format("ms");
 
-        return false;
+        // return false;
+        return true; // 2023-11-20.
       }
     }
 
     const PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
-    g_imu->UpdateImuPose(p.getPose().template cast<double>());
+    // g_imu->UpdateImuPose(p.getPose().template cast<double>());
+    if(isBigTranslation) // 2023-11-21.
+    {
+      g_imu->UpdateImuPose(T_w_i_prev.template cast<double>());
+    }
+    else
+    {
+      g_imu->UpdateImuPose(p.getPose().template cast<double>());
+    }
     g_imu->NonlinearOptimization(last_state_t_ns / 1e9);
     g_imu->slideWindow(marg_frame_index); // 'marg_frame_index' should be a index of removing frame 2023-11-14.
 
@@ -654,6 +751,8 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   if (out_state_queue) {
     // 取出当前帧的状态量（时间戳，位姿，速度，bg, ba）存入输出状态队列，用于在pangolin上的显示
     const PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
+
+    T_w_i_prev = p.getPose();// 2023-11-21 10:07
 
     typename PoseVelBiasState<double>::Ptr data(new PoseVelBiasState<double>(
         p.getT_ns(), p.getPose().template cast<double>(),
@@ -688,6 +787,13 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   last_processed_t_ns = last_state_t_ns;
 
   stats_sums_.add("measure", t_total.elapsed()).format("ms"); // 统计measure函数消耗的时间
+
+  if(g_imu->UseImuPose()) // 2023-11-20 10:22
+  {
+    std::cout << "begin reset algorithm.\n";
+    reset_(); 
+    return false;
+  }
 
   return true;
 }
@@ -1384,7 +1490,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from '
         inc = -inc;
 
         Timer t;
-        l_diff = lqr->backSubstitute(inc);
+        l_diff = lqr->backSubstitute(inc); // 用增量来更新点
         stats.add("backSubstitute", t.reset()).format("ms");
       }
 
@@ -1393,7 +1499,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from '
       //        inc.array() *= jacobian_scaling.array();
       //      }
 
-      // apply increment to poses
+      // apply increment to poses 应用增量到位姿
       for (auto& [frame_id, state] : frame_poses) {
         int idx = aom.abs_order_map.at(frame_id).first;
         state.applyInc(inc.template segment<POSE_SIZE>(idx));

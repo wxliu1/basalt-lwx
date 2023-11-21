@@ -261,6 +261,10 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   // bool converged { false };
   int marg_frame_index{-1};
   // the end.
+  // 2023-11-21
+  bool isResetAlgorithm_ { false };
+  SE3 T_w_i_prev;
+  // the end.
 
 };
 }  // namespace basalt

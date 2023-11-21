@@ -49,6 +49,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <basalt/image/image_pyr.h>
 #include <basalt/utils/keypoints.h>
 
+// 2023-11-21
+#include <condition_variable>
+extern std::condition_variable vio_cv;
+// the end.
 namespace basalt {
 
 /// Unlike PatchOpticalFlow, FrameToFrameOpticalFlow always tracks patches
@@ -102,14 +106,16 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   // 2023-11-19
   void Reset()
   {
-    reset_mutex.lock();
-    t_ns = -1;
-    frame_counter = 0;
-    last_keypoint_id = 0;
-    OpticalFlowInput::Ptr curr_frame;
-    while (!input_queue.empty()) input_queue.pop(curr_frame); // drain input_queue
+    isReset_ = true;
+
+    // reset_mutex.lock();
+    // t_ns = -1;
+    // frame_counter = 0;
+    // last_keypoint_id = 0;
+    // OpticalFlowInput::Ptr curr_frame;
+    // while (!input_queue.empty()) input_queue.pop(curr_frame); // drain input_queue
     
-    reset_mutex.unlock();
+    // reset_mutex.unlock();
   }
   // the end.
 
@@ -118,7 +124,24 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
     // processingLoop循环处理部分：拿到一帧的数据指针、处理一帧processFrame
     while (true) {
-      reset_mutex.lock(); // 2023-11-19
+      if(GetReset()) // 2023-11-20 11:12
+      {
+        t_ns = -1;
+        frame_counter = 0;
+        last_keypoint_id = 0;
+        
+        OpticalFlowInput::Ptr curr_frame;
+        while (!input_queue.empty()) input_queue.pop(curr_frame); // drain input_queue
+        OpticalFlowResult::Ptr output_frame;
+        while (!output_queue->empty()) output_queue->pop(output_frame); // drain output_queue
+
+        SetReset(false);
+        
+        std::cout << "reset front end.\n";
+        vio_cv.notify_one();
+        
+      }
+      // reset_mutex.lock(); // 2023-11-19
       input_queue.pop(input_ptr); // 从输入流获得图片
 
       // 如果获得的图片为空，在输出队列添加一个空的元素
@@ -129,7 +152,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
       // 追踪特征点，添加特征点，剔除外点，将追踪结果push到输出队列
       processFrame(input_ptr->t_ns, input_ptr);
-      reset_mutex.unlock(); // 2023-11-19
+      // reset_mutex.unlock(); // 2023-11-19
     }
   }
 
@@ -143,7 +166,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     
     if (t_ns < 0) { // 第一次进入: 第一次处理帧时，t_ns == -1.
       // 开始初始化
-
+      std::cout <<"front end init.\n";
       t_ns = curr_t_ns;
 
       transforms.reset(new OpticalFlowResult);
@@ -178,7 +201,17 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       // step5: 使用对极几何剔除外点
       filterPoints();
       // 初始化结束
+      // 2023-11-20
+      std::cout << "optical flow: cam0 observation count: " << transforms->observations.at(0).size() << std::endl;
+      if(transforms->observations.at(0).size() <= 0)
+      {
+        t_ns = -1;
+        if (output_queue && frame_counter % config.optical_flow_skip_frames == 0)
+        output_queue->push(transforms);
 
+        return ;
+      }
+      // the end.
     } else { // 非第一次进入
 
       // 开始追踪
@@ -548,7 +581,12 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
 
   std::shared_ptr<std::thread> processing_thread;
 
-  std::mutex reset_mutex; // 2023-11-19.
+  // 2023-11-19.
+  std::mutex reset_mutex; 
+  bool isReset_ { false };
+  void SetReset(bool bl) { isReset_ =bl; }
+  inline bool GetReset() { return isReset_;}
+  // the end.
 };
 
 }  // namespace basalt

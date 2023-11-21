@@ -97,8 +97,17 @@ size_t last_frame_processed = 0;
 
 tbb::concurrent_unordered_map<int64_t, int, std::hash<int64_t>> timestamp_to_id;
 
+// 2023-11-20.
 // std::mutex reset_mutex;
-std::condition_variable cv;
+// std::mutex opt_mutex;
+// std::mutex vio_mutex;
+// the end.
+
+// 2023-11-21.
+std::mutex vio_m;
+std::condition_variable vio_cv;
+// the end.
+
 bool step_by_step = false;
 size_t max_frames = 0;
 
@@ -119,9 +128,7 @@ ImuProcess* g_imu = nullptr;
 // 2023-11-10.
 void feedImage(basalt::OpticalFlowInput::Ptr data, ImuProcess* imu) 
 {
-  // reset_mutex.lock();
   opt_flow_ptr->input_queue.push(data);
-  // reset_mutex.unlock();
 }
 
 void feedImu(basalt::ImuData<double>::Ptr data) 
@@ -164,10 +171,28 @@ void stop()
 
 void Reset()
 {
+
+/* 
+ * 2023-11-20.
+ * another reset method is to quit threads and reconstruct the objects:
+  opt_flow_ptr->input_queue.push(nullptr);
+  vio->imu_data_queue.push(nullptr);
+
+  opt_mutex.lock();
+  // reconstruct optical flow object
+  opt_flow_ptr =
+    basalt::OpticalFlowFactory::getOpticalFlow(vio_config, calib);
+  opt_mutex.unlock();
+  vio_mutex.lock();
+  // reconstruct vio object
+  vio_mutex.unlock();
+*/
+
   // reset_mutex.lock();
   opt_flow_ptr->Reset();
   vio->Reset();
   // reset_mutex.unlock();
+  
 }
 
 int main(int argc, char** argv) {
