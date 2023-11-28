@@ -4,7 +4,12 @@
 
 #include "wx_ros2_io.h"
 #include <basalt/image/image.h>
+// #include <basalt/utils/vis_utils.h>
+#include <opencv2/highgui.hpp>
 
+#include <basalt/io/dataset_io.h>
+
+extern basalt::OpticalFlowBase::Ptr opt_flow_ptr; // 2023-11-28.
 
 //#include <boost/circular_buffer.hpp>
 
@@ -70,6 +75,9 @@ CRos2IO::CRos2IO(bool use_imu)
     sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS(), std::bind(&CRos2IO::imu_callback, this, _1), sub_opt);
   }
   
+// #ifdef SHOW_WARPED_IMG
+  pub_warped_img = this->create_publisher<sensor_msgs::msg::Image>("/warped_img", 1); // feature_img // warped_img
+// #endif
  
 }
 
@@ -95,10 +103,10 @@ void CRos2IO::StereoCb(const sensor_msgs::msg::Image::SharedPtr &image0_ptr,
   const uint8_t* data_in = (const uint8_t*)image0_ptr->data.data();
   uint16_t* data_out = data->img_data[0].img->ptr;
   size_t full_size = image0_ptr->width * image0_ptr->height;
-  for (size_t j = 0; j < full_size; j++) {
-    int val = data_in[j];
+  for (size_t i = 0; i < full_size; i++) {
+    int val = data_in[i];
     val = val << 8;
-    data_out[j] = val;
+    data_out[i] = val;
   }
 
   // 拷贝右目图像数据
@@ -107,10 +115,10 @@ void CRos2IO::StereoCb(const sensor_msgs::msg::Image::SharedPtr &image0_ptr,
   data_in = (const uint8_t*)image1_ptr->data.data();
   data_out = data->img_data[1].img->ptr;
   full_size = image1_ptr->width * image1_ptr->height;
-  for (size_t j = 0; j < full_size; j++) {
-    int val = data_in[j];
+  for (size_t i = 0; i < full_size; i++) {
+    int val = data_in[i];
     val = val << 8;
-    data_out[j] = val;
+    data_out[i] = val;
   }
 
   feedImage_(data);
@@ -271,6 +279,266 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
   // std::cout << " postion: " << pose_msg.pose.position.x << ", " 
   //   << pose_msg.pose.position.y << ", " << pose_msg.pose.position.z << std::endl;
 
+}
+
+/*inline*/ void getcolor(float p, float np, float& r, float& g, float& b) {
+  float inc = 4.0 / np;
+  float x = p * inc;
+  r = 0.0f;
+  g = 0.0f;
+  b = 0.0f;
+
+  if ((0 <= x && x <= 1) || (5 <= x && x <= 6))
+    r = 1.0f;
+  else if (4 <= x && x <= 5)
+    r = x - 4;
+  else if (1 <= x && x <= 2)
+    r = 1.0f - (x - 1);
+
+  if (1 <= x && x <= 3)
+    g = 1.0f;
+  else if (0 <= x && x <= 1)
+    g = x - 0;
+  else if (3 <= x && x <= 4)
+    g = 1.0f - (x - 3);
+
+  if (3 <= x && x <= 5)
+    b = 1.0f;
+  else if (2 <= x && x <= 3)
+    b = x - 2;
+  else if (5 <= x && x <= 6)
+    b = 1.0f - (x - 5);
+}
+
+void CRos2IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
+{
+  static cv::Mat disp_frame;
+
+  // step1 convert image
+  uint16_t *data_in = nullptr;
+  uint8_t *data_out = nullptr;
+
+  // for(int cam_id = 0; cam_id < NUM_CAMS; cam_id++)
+  for(int cam_id = 0; cam_id < 1; cam_id++)
+  {
+    // img_data is a vector<ImageData>
+    basalt::ImageData imageData = data->opt_flow_res->input_images->img_data[cam_id];
+    // std::cout << "w=" << imageData.img->w << "  h=" << imageData.img->h << std::endl;
+   data_in = imageData.img->ptr;
+    disp_frame = cv::Mat::zeros(imageData.img->h, imageData.img->w, CV_8UC1); // CV_8UC3
+    data_out = disp_frame.ptr();
+
+    size_t full_size = imageData.img->size();//disp_frame.cols * disp_frame.rows;
+    for (size_t i = 0; i < full_size; i++) {
+      int val = data_in[i];
+      val = val >> 8;
+      data_out[i] = val;
+      // disp_frame.at(<>)
+    }
+ /**/
+
+/*
+    cv::Mat img(cv::Size(imageData.img->w, imageData.img->h), CV_16UC1, imageData.img->ptr);
+    #ifdef _DEBUG_
+    cv::imshow("feature_img", img);	
+    // cv::waitKey(0);
+    cv::waitKey(1);
+    #endif
+
+    cv::Mat disp_frame;
+    img.convertTo(disp_frame, CV_8UC1);
+    
+*/
+    // disp_frame.convertTo(disp_frame, CV_8UC3);
+    // just gray to bgr can show colored text and pixel.
+    cv::cvtColor(disp_frame, disp_frame, CV_GRAY2BGR); // CV_GRAY2RGB
+    
+    #ifdef _DEBUG_
+    cv::imshow("feature_img", disp_frame);	
+    // cv::waitKey(0);
+    cv::waitKey(1);
+    #endif
+    
+
+    // bool show_obs = true;
+    // if (show_obs) { // 显示追踪的特征点
+    #ifdef SHOW_TRACKED_POINTS
+
+      const auto& points = data->projections[cam_id];
+
+        if (points.size() > 0) {
+          double min_id = points[0][2], max_id = points[0][2];
+
+          for (const auto& points2 : data->projections)
+            for (const auto& p : points2) {
+              min_id = std::min(min_id, p[2]);
+              max_id = std::max(max_id, p[2]);
+            }
+
+          for (const auto& c : points) {
+            const float radius = 6.5;
+
+            float r, g, b;
+            getcolor(c[2] - min_id, max_id - min_id, b, g, r);
+            // glColor3f(r, g, b);
+            // pangolin::glDrawCirclePerimeter(c[0], c[1], radius);
+            b *= 255;
+            g *= 255;
+            r *= 255;
+            cv::circle(disp_frame, cv::Point(c[0], c[1]), radius, cv::Scalar(b, g, r));
+            // cv::circle(disp_frame, cv::Point(c[0], c[1]), radius, cv::Scalar(255, 255, 255));
+
+          }
+        }
+
+        // glColor3f(1.0, 0.0, 0.0); // to r, g, b
+        // pangolin::GlFont::I()
+        //     .Text("Tracked %d points", points.size())
+        //     .Draw(5, 20);
+
+        if(1)
+        {
+  /*
+  void cv::putText  ( InputOutputArray  img,  // 要添加备注的图片
+  const String &  text,  // 要添加的文字内容
+  Point  org,  // 要添加的文字基准点或原点坐标，左上角还是左下角取决于最后一个参数bottomLeftOrigin的取值
+               // Bottom-left corner of the text string in the image.
+  int  fontFace,  
+  double  fontScale, // 字体相较于最初尺寸的缩放系数。若为1.0f，则字符宽度是最初字符宽度，若为0.5f则为默认字体宽度的一半 
+  Scalar  color,  // 字体颜色
+  int  thickness = 1,  // 字体笔画的粗细程度
+  int  lineType = LINE_8,  // 字体笔画线条类型
+  
+  bool  bottomLeftOrigin = false  // 如果取值为TRUE，则Point org指定的点为插入文字的左上角位置，如果取值为默认值false则指定点为插入文字的左下角位置.
+                                  // When true, the image data origin is at the bottom-left corner. Otherwise, it is at the top-left corner. 
+ )
+
+  fontFace文字的字体类型（Hershey字体集），可供选择的有
+  FONT_HERSHEY_SIMPLEX：正常大小无衬线字体
+  FONT_HERSHEY_PLAIN：小号无衬线字体
+  FONT_HERSHEY_DUPLEX：正常大小无衬线字体，比FONT_HERSHEY_SIMPLEX更复杂
+  FONT_HERSHEY_COMPLEX：正常大小有衬线字体
+  FONT_HERSHEY_TRIPLEX：正常大小有衬线字体，比FONT_HERSHEY_COMPLEX更复杂
+  FONT_HERSHEY_COMPLEX_SMALL：FONT_HERSHEY_COMPLEX的小译本
+  FONT_HERSHEY_SCRIPT_SIMPLEX：手写风格字体
+  FONT_HERSHEY_SCRIPT_COMPLEX：手写风格字体，比FONT_HERSHEY_SCRIPT_SIMPLEX更复杂
+  这些参数和FONT_ITALIC同时使用就会得到相应的斜体字 
+
+*/
+
+/*
+  //创建空白图用于绘制文字
+	cv::Mat image = cv::Mat::zeros(cv::Size(640, 480), CV_8UC3);
+	//设置蓝色背景
+	image.setTo(cv::Scalar(100, 0, 0));
+ */
+//设置绘制文本的相关参数
+
+
+          std::string strText = "";
+          char szText[100] = { 0 };
+          sprintf(szText, "Tracked %d points", points.size());
+          strText = szText;
+          // show text
+          int font_face = cv::FONT_HERSHEY_SIMPLEX;// cv::FONT_HERSHEY_COMPLEX; 
+          double font_scale = 0.5;//2;//1;
+          int thickness = 1;//2; // 字体笔画的粗细程度，有默认值1
+          int baseline;
+          //获取文本框的长宽
+          //cv::Size text_size = cv::getTextSize(text, font_face, font_scale, thickness, &baseline);
+          cv::Size text_size = cv::getTextSize(strText, font_face, font_scale, thickness, &baseline);
+        
+          //将文本框居中绘制
+          cv::Point origin; //计算文字左下角的位置
+          // origin.x = image.cols / 2 - text_size.width / 2;
+          // origin.y = image.rows / 2 + text_size.height / 2;
+          origin.x = 0; // 2023-11-28
+          // origin.x = disp_frame.cols - text_size.width;
+          origin.y = text_size.height;
+          //cv::putText(disp_frame, text, origin, font_face, font_scale, cv::Scalar(0, 255, 255), thickness, 8, 0);
+          // cv::putText(disp_frame, text, origin, font_face, font_scale, cv::Scalar(0, 0, 0), thickness, 8, false);
+          cv::putText(disp_frame, strText, origin, font_face, font_scale, cv::Scalar(255, 0, 255), thickness, 8, false);
+
+        }
+    // }
+    #endif
+
+    // bool show_flow = true;
+    // if (show_flow) { // 显示光流patch
+    #ifdef SHOW_FLOW_PATCHES
+
+      const Eigen::aligned_map<basalt::KeypointId, Eigen::AffineCompact2f>&
+            kp_map = data->opt_flow_res->observations[cam_id];
+
+      for (const auto& kv : kp_map) {
+        Eigen::MatrixXf transformed_patch =
+            kv.second.linear() * opt_flow_ptr->patch_coord;
+        transformed_patch.colwise() += kv.second.translation();
+
+        for (int i = 0; i < transformed_patch.cols(); i++) {
+          const Eigen::Vector2f c = transformed_patch.col(i);
+          // pangolin::glDrawCirclePerimeter(c[0], c[1], 0.5f);
+          cv::circle(disp_frame, cv::Point(c[0], c[1]), 0.5f, cv::Scalar(0, 0, 255));
+        }
+
+        const Eigen::Vector2f c = kv.second.translation();
+
+      }
+
+      // pangolin::GlFont::I()
+      //     .Text("%d opt_flow patches", kp_map.size())
+      //     .Draw(5, 20);
+
+      std::string strText = "";
+      char szText[100] = { 0 };
+      sprintf(szText, "%d opt_flow patches", kp_map.size());
+      strText = szText;
+      // show text
+      int font_face = cv::FONT_HERSHEY_SIMPLEX;// cv::FONT_HERSHEY_COMPLEX; 
+      double font_scale = 0.5;//1;//2;//1;
+      int thickness = 1;//2; // 字体笔画的粗细程度，有默认值1
+      int baseline;
+      //获取文本框的长宽
+      //cv::Size text_size = cv::getTextSize(text, font_face, font_scale, thickness, &baseline);
+      cv::Size text_size = cv::getTextSize(strText, font_face, font_scale, thickness, &baseline);
+    
+      //将文本框居中绘制
+      cv::Point origin; //计算文字左下角的位置
+      // origin.x = image.cols / 2 - text_size.width / 2;
+      // origin.y = image.rows / 2 + text_size.height / 2;
+      origin.x = disp_frame.cols - text_size.width;
+      origin.y = text_size.height;
+      //cv::putText(disp_frame, text, origin, font_face, font_scale, cv::Scalar(0, 255, 255), thickness, 8, 0);
+      // cv::putText(disp_frame, text, origin, font_face, font_scale, cv::Scalar(0, 0, 0), thickness, 8, false);
+      cv::putText(disp_frame, strText, origin, font_face, font_scale, cv::Scalar(0, 255, 255), thickness, 8, false); 
+      
+    // }
+    #endif
+
+
+    #ifdef _OPEN_CV_SHOW_
+    cv::imshow("feature_img", disp_frame);	
+    // cv::waitKey(0);
+    cv::waitKey(1);
+    #endif
+
+    sensor_msgs::msg::Image::SharedPtr msg = cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", disp_frame).toImageMsg();
+    msg->header.stamp = this->now();
+    msg->header.frame_id = "odom";
+    // warped_img.header = image0_ptr->header;
+/*
+ * 以下设置似乎显得多余?  yeah.
+    msg->height = disp_frame.rows;
+    msg->width = disp_frame.cols;
+    // msg->is_bigendian = false;
+    // msg->step = 640; // 640 * 1 * 3
+    // warped_img.data = image0_ptr->data;
+    // msg->encoding = "mono8";
+*/    
+    pub_warped_img->publish(*msg);
+    
+  }
+    
 }
 
 #ifdef _TEST_ROS2_IO

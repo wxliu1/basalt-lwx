@@ -11,6 +11,8 @@
 #include "rclcpp/type_adapter.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include <cv_bridge/cv_bridge.h>
+
 #include "std_msgs/msg/string.hpp"
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -89,6 +91,7 @@ public:
     void Reset();
     //void PublishPoint(basalt::VioVisualizationData::Ptr data); // TODO: transfer timestamp of sampling.
     void PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data);
+    void PublishFeatureImage(basalt::VioVisualizationData::Ptr data);
 
 private:    
     void imu_callback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) const; 
@@ -145,6 +148,9 @@ private:
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_path_;
     nav_msgs::msg::Path path_msg_;
+
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_warped_img;
+    // sensor_msgs::msg::Image warped_img;
 
 /*
  * minimal publisher and subscriber
