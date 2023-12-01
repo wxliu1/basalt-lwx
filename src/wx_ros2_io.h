@@ -34,6 +34,8 @@
 #include <basalt/imu/imu_types.h>
 #include <basalt/vi_estimator/vio_estimator.h>
 
+#include <myodom/msg/my_odom.hpp>
+
 //#include <Eigen/Dense>
 
 using namespace std::chrono_literals;
@@ -72,6 +74,7 @@ struct rclcpp::TypeAdapter<std::string, std_msgs::msg::String>
 
 namespace wx {
 
+using Vector2d = Eigen::Vector2d;
 using Vector3d = Eigen::Vector3d;
 using Matrix3d = Eigen::Matrix3d;
 // using Quaterniond = Eigen::Quaterniond; 
@@ -101,6 +104,8 @@ private:
         const sensor_msgs::msg::Image::SharedPtr &image1_ptr/*,
         const sensor_pub::msg::ImageInfo::SharedPtr &image0_info_ptr,
         const sensor_pub::msg::ImageInfo::SharedPtr &image1_info_ptr*/);
+
+    inline void getcolor(float p, float np, float& r, float& g, float& b);
 
 #if 0
     // sys_stop_sub回调函数，用于stop
@@ -151,6 +156,8 @@ private:
 
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_warped_img;
     // sensor_msgs::msg::Image warped_img;
+
+    rclcpp::Publisher<myodom::msg::MyOdom>::SharedPtr pub_my_odom_;
 
 /*
  * minimal publisher and subscriber

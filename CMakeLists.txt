@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.10...3.18)
 project(stereo3)
 
 add_definitions(-D_WX_TEST) # define '_WX_TEST' macro
-add_compile_definitions(_OPEN_CV_SHOW_=1)
-# add_compile_definitions(SHOW_FLOW_PATCHES)
+# add_compile_definitions(_OPEN_CV_SHOW_=1)
+add_compile_definitions(SHOW_FLOW_PATCHES)
 add_definitions(-DSHOW_TRACKED_POINTS)
 
 # 2023-11-10
@@ -18,6 +18,7 @@ find_package(message_filters REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(Ceres REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(myodom REQUIRED)
 # the end.
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/" ${CMAKE_MODULE_PATH})
@@ -378,6 +379,7 @@ ament_target_dependencies(stereo3 rclcpp std_msgs
   message_filters
   nav_msgs
   cv_bridge
+  myodom
   )
 
 install(TARGETS

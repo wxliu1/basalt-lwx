@@ -76,8 +76,10 @@ CRos2IO::CRos2IO(bool use_imu)
   }
   
 // #ifdef SHOW_WARPED_IMG
-  pub_warped_img = this->create_publisher<sensor_msgs::msg::Image>("/warped_img", 1); // feature_img // warped_img
+  pub_warped_img = this->create_publisher<sensor_msgs::msg::Image>("/feature_img", 1); // feature_img // warped_img
 // #endif
+
+  pub_my_odom_ = this->create_publisher<myodom::msg::MyOdom>("/my_odom", 10);
  
 }
 
@@ -168,7 +170,10 @@ void CRos2IO::PublishPoints(basalt::VioVisualizationData::Ptr data)
     return;
 
   sensor_msgs::msg::PointCloud2 cloud_msg;
-  cloud_msg.header.stamp = this->now();
+  // Time (int64_t nanoseconds=0, rcl_clock_type_t clock=RCL_SYSTEM_TIME)
+  cloud_msg.header.stamp = rclcpp::Time(data->t_ns);//this->now();
+  // cloud_msg.header.stamp.sec = data->t_ns / 1e9;
+  // cloud_msg.header.stamp.nanosec = data->t_ns % (1e9);
   cloud_msg.header.frame_id = "odom";
   cloud_msg.height = 1;
   cloud_msg.width = 0;
@@ -217,7 +222,7 @@ void CRos2IO::PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data)
 
   // 创建nav_msgs::msg::Odometry消息对象
   nav_msgs::msg::Odometry odom_msg;
-  odom_msg.header.stamp = this->now();
+  odom_msg.header.stamp = rclcpp::Time(data->t_ns);//this->now();
   odom_msg.header.frame_id = "odom";
   odom_msg.pose.pose.position.x = data->T_w_i.translation().x();
   odom_msg.pose.pose.position.y = data->T_w_i.translation().y();
@@ -242,8 +247,12 @@ void CRos2IO::Reset()
 void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
 {  
   geometry_msgs::msg::PoseStamped pose_msg;
-  // pose_msg.header.stamp = time;  // 帧采集时间
-  pose_msg.header.stamp = this->now();
+  // pose_msg.header.stamp = this->now();
+  // pose_msg.header.stamp = ros::Time(data->t_ns * 1.0 / 1e9);  ///< timestamp of the state in nanoseconds;  // 帧采集时间
+  pose_msg.header.stamp = rclcpp::Time(data->t_ns);
+  // pose_msg.header.stamp.sec = data->t_ns / 1e9;
+  // pose_msg.header.stamp.nanosec = data->t_ns % 1e9;
+
   pose_msg.header.frame_id = "odom";
   // Sophus2Ros(tf, pose_msg.pose);
   pose_msg.pose.position.x = data->T_w_i.translation().x();
@@ -253,6 +262,94 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
   pose_msg.pose.orientation.y = data->T_w_i.unit_quaternion().y();
   pose_msg.pose.orientation.z = data->T_w_i.unit_quaternion().z();
   pose_msg.pose.orientation.w = data->T_w_i.unit_quaternion().w();
+
+  if(1) // compute velocity.
+  {
+    static constexpr double fps_inv = 1 / 25; // assume fps = 25
+    static constexpr int64_t dt_ns = (46472013 - 1) * 1e9 + 924371744;
+    static int odometry_cnt = 0;
+    static int64_t t_ns = 0;
+    static double total_distance = 0.0;
+    static double period_distance = 0.0;
+    static Vector2d last_pose(0, 0);
+
+    static int64_t last_ns = 0;
+    static double last_velocity = 0.0;
+
+    if(t_ns == 0)
+    {
+       t_ns = data->t_ns - fps_inv * 1e9; 
+    }
+
+    if(last_ns == 0)
+    {
+       last_ns = data->t_ns - fps_inv * 1e9; 
+    }
+
+    odometry_cnt++;
+    if(odometry_cnt == 1)
+    {
+      period_distance = 0.0;
+      // t_ns = data->t_ns;
+    }
+    else if(odometry_cnt == 5)
+    {
+      odometry_cnt = 0;
+    }
+
+    Vector2d curr_pose;
+    curr_pose.x() = data->T_w_i.translation().x();
+    curr_pose.y() = data->T_w_i.translation().y();
+    double delta_distance = (curr_pose - last_pose).norm();
+    
+    double frame_delta_s = (data->t_ns - last_ns) * 1.0 * (1e-9); 
+    double curr_velocity = delta_distance / frame_delta_s;
+    if(last_velocity < 1e-3)
+    {
+      curr_velocity = last_velocity;
+    }
+    double accelerated_velocity = (curr_velocity - last_velocity) / frame_delta_s;
+    if(accelerated_velocity > 1.2 || accelerated_velocity < -1.35 || curr_velocity > (200 / 9)) // 80km/h
+    {
+      curr_velocity = last_velocity;
+      delta_distance = last_velocity * frame_delta_s;
+    }
+
+    period_distance += delta_distance;
+    total_distance += delta_distance;
+
+    last_pose = curr_pose;
+    last_ns = data->t_ns;
+    last_velocity = curr_velocity;
+
+    if(odometry_cnt == 0)
+    {
+      // double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9);
+      // std::cout << "velocity is " << (period_distance / 0.2) << std::endl;
+      // std::cout << "velocity is " << (period_distance / delta_s) << std::endl;
+
+      if (pub_my_odom_ != nullptr && pub_my_odom_->get_subscription_count() > 0)
+      {
+        myodom::msg::MyOdom odom_msg;
+        // odom_msg.header.stamp = rclcpp::Time(data->t_ns);
+        odom_msg.header.stamp = rclcpp::Time(data->t_ns - dt_ns); // complementary timestamp
+        odom_msg.header.frame_id = "odom";
+
+        double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9); 
+
+        odom_msg.velocity = period_distance / delta_s;
+        odom_msg.delta_time = delta_s;
+        odom_msg.period_odom = period_distance;
+        odom_msg.total_odom = total_distance;
+
+        // publish velocity, period odom and total odom.
+        pub_my_odom_->publish(odom_msg);
+      }
+
+      t_ns = data->t_ns;
+    }
+
+  }
 
 
   if (pub_odom_ != nullptr && pub_odom_->get_subscription_count() > 0)
@@ -271,7 +368,8 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
     return ;
 
   // 发布轨迹   path_odom话题
-  path_msg_.header.stamp = this->now();
+  // path_msg_.header.stamp = this->now();
+  path_msg_.header.stamp = rclcpp::Time(data->t_ns * 1.0 / 1e9);  ///< timestamp of the state in nanoseconds;  // 帧采集时间
   path_msg_.header.frame_id = "odom";
   path_msg_.poses.push_back(pose_msg);
   pub_path_->publish(path_msg_);
@@ -281,7 +379,7 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
 
 }
 
-/*inline*/ void getcolor(float p, float np, float& r, float& g, float& b) {
+inline void CRos2IO::getcolor(float p, float np, float& r, float& g, float& b) {
   float inc = 4.0 / np;
   float x = p * inc;
   r = 0.0f;
@@ -382,6 +480,7 @@ void CRos2IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
             getcolor(c[2] - min_id, max_id - min_id, b, g, r);
             // glColor3f(r, g, b);
             // pangolin::glDrawCirclePerimeter(c[0], c[1], radius);
+            // pangolin里面的1.0，对应opencv里面的255
             b *= 255;
             g *= 255;
             r *= 255;
@@ -523,7 +622,7 @@ void CRos2IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
     #endif
 
     sensor_msgs::msg::Image::SharedPtr msg = cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", disp_frame).toImageMsg();
-    msg->header.stamp = this->now();
+    msg->header.stamp = rclcpp::Time(data->t_ns * 1.0 / 1e9);
     msg->header.frame_id = "odom";
     // warped_img.header = image0_ptr->header;
 /*

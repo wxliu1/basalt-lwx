@@ -30,6 +30,7 @@
   <depend>message_filters</depend>
   <depend>nav_msgs</depend>
   <depend>cv_bridge</depend>
+  <depend>myodom</depend> <!--add this module to ensure find it before compile-->
 
   <export>
     <build_type>ament_cmake</build_type>

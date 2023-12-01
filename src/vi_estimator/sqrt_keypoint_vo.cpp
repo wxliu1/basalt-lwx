@@ -666,7 +666,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   double xdiff = P.x();
   double ydiff = P.y();
   // double zdiff = P.z();
-  constexpr double dt_threshold = 1.0; // 5.0; // 1.0
+  constexpr double dt_threshold = 5.0; // 5.0; // 1.0
   double norm = sqrt(xdiff * xdiff + ydiff * ydiff);
   //if(fabs(xdiff) > dt_threshold || fabs(ydiff) > dt_threshold) // neglect z axis
   if(norm > dt_threshold) // neglect z axis
