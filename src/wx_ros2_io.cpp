@@ -265,8 +265,13 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
 
   if(1) // compute velocity.
   {
-    static constexpr double fps_inv = 1 / 25; // assume fps = 25
-    static constexpr int64_t dt_ns = (46472013 - 1) * 1e9 + 924371744;
+    // static constexpr int DATA_CNT = 5;
+    // static constexpr double fps_inv = 1 / 25; // assume fps = 25
+
+    static constexpr int DATA_CNT = 10;
+    static constexpr double fps_inv = 1 / 50; // assume fps = 50
+    // static constexpr int64_t dt_ns = (46472013 - 1) * 1e9 + 924371744;
+    static constexpr int64_t dt_ns = (46472013 - 0) * 1e9 +  643412768; // modified 2023-12-5.
     static int odometry_cnt = 0;
     static int64_t t_ns = 0;
     static double total_distance = 0.0;
@@ -292,7 +297,7 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
       period_distance = 0.0;
       // t_ns = data->t_ns;
     }
-    else if(odometry_cnt == 5)
+    else if(odometry_cnt == DATA_CNT)
     {
       odometry_cnt = 0;
     }
