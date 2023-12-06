@@ -62,9 +62,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <basalt/utils/format.hpp>
 #include <basalt/utils/time_utils.hpp>
 
-#include "wx_ros2_io.h" // 2023-11-10.
+#include "wx_ros1_io.h" // 2023-11-10.
 #include "wx_yaml_io.h"
 #include "imu/imu_process.h"
+#include <signal.h>
 
 using namespace wx;
 
@@ -310,19 +311,21 @@ int main(int argc, char** argv) {
   // the end.
 
   // 2023-11-10.
-  rclcpp::init(argc, argv);
-  //auto node = std::make_shared<CRos2IO>();
-  auto node = std::make_shared<CRos2IO>(sys_cfg_.use_imu, yaml.fps, yaml.dt_ns);
+ 
+  ros::init(argc, argv, "streo3_node");  // node name
+  ros::MultiThreadedSpinner spinner(6);  // use 6 threads
 
-  node->inputIMU_ = std::bind(&ImuProcess::inputIMU, &imu, std::placeholders::_1, 
+  wx::CRos1IO node{ros::NodeHandle{"~"}, yaml.use_imu, yaml.fps, yaml.dt_ns};
+
+  node.inputIMU_ = std::bind(&ImuProcess::inputIMU, &imu, std::placeholders::_1, 
     std::placeholders::_2, std::placeholders::_3);
 
-  node->feedImage_ = std::bind(&feedImage, std::placeholders::_1, &imu);
+  node.feedImage_ = std::bind(&feedImage, std::placeholders::_1, &imu);
   // node->feedImage_ = std::bind(&feedImage, std::placeholders::_1);
 #if USE_TIGHT_COUPLING  
   node->feedImu_ = std::bind(&feedImu, std::placeholders::_1);
 #endif 
-  node->stop_ = std::bind(&stop);
+  node.stop_ = std::bind(&stop);
 
   // the end.
 
@@ -345,8 +348,8 @@ int main(int argc, char** argv) {
         out_vis_queue.pop(data); // 当队列中数据为空时，该并发队列处于阻塞状态。
 
         if (data.get()) {
-          node->PublishPoints(data);
-          node->PublishFeatureImage(data);
+          node.PublishPoints(data);
+          node.PublishFeatureImage(data);
         } else {
           break;
         }
@@ -369,7 +372,7 @@ int main(int argc, char** argv) {
       if (!data.get()) break;
 
       //node->PublishOdometry(data); // 2023-11-11
-      node->PublishPoseAndPath(data); // 2023-11-16
+      node.PublishPoseAndPath(data); // 2023-11-16
       
     }
 
@@ -397,9 +400,9 @@ int main(int argc, char** argv) {
   }
 
   // 2023-11-10
-  rclcpp::spin(node);
-  //rclcpp::shutdown();
-  node->stop_();
+  // ros::spin(); // comment 
+  spinner.spin();  // add this line 2023-12-04
+  node.stop_();
   // the end.
 
   // wait first for vio to complete processing

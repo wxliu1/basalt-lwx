@@ -20,26 +20,76 @@ if(PUBLISH_VELOCITY)
     add_compile_definitions(_PUBLISH_VELOCITY_)
 endif()
 
+# 2023-12-6
+set(Eigen3_DIR "/root/SETUP/eigen-3.4.0_install/share/eigen3/cmake")
+set(Ceres_DIR "/root/SETUP/ceres210_install/lib/cmake/Ceres")
+find_package(Eigen3 REQUIRED)
+# the end.
 
 # 2023-11-10
-find_package(ament_cmake REQUIRED)
-find_package(rclcpp REQUIRED)
-find_package(rclcpp_components REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(sensor_pub REQUIRED)
-find_package(message_filters REQUIRED)
-find_package(nav_msgs REQUIRED)
+
+# find_package(std_msgs REQUIRED)
+# find_package(sensor_msgs REQUIRED)
+# find_package(sensor_pub REQUIRED)
+# find_package(message_filters REQUIRED)
+# find_package(nav_msgs REQUIRED)
 find_package(Ceres REQUIRED)
-find_package(cv_bridge REQUIRED)
+# find_package(cv_bridge REQUIRED)
 find_package(myodom REQUIRED)
 # the end.
+
+find_package(catkin REQUIRED COMPONENTS 
+  roscpp
+  # tf2_ros
+  # tf2_eigen
+  cv_bridge
+  image_transport
+  nav_msgs
+  sensor_msgs
+  # visualization_msgs
+  # lwx add
+  sensor_pub
+  # message_generation
+  # message_runtime
+  #camera_models
+  std_msgs
+  roslib
+  # actionlib
+  # actionlib_msgs
+  # loop_action
+  message_filters
+  # the end.
+  # pcl_ros
+  myodom
+
+)
+
+find_package(yaml-cpp REQUIRED)
+
+catkin_package(
+  #INCLUDE_DIRS include
+#  LIBRARIES binocular_sensor
+  CATKIN_DEPENDS roscpp std_msgs rosmsg
+#  DEPENDS system_lib
+)
+
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+  # ${EIGEN3_INCLUDE_DIR}
+  # "./"
+  "/usr/local/include"
+)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/" ${CMAKE_MODULE_PATH})
 
 if(NOT EIGEN_ROOT)
+  message(STATUS "--------set EIGEN_ROOT")
   set(EIGEN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/basalt-headers/thirdparty/eigen")
+else()
+  message(STATUS "--------EIGEN_ROOT=" ${EIGEN_ROOT})  
 endif()
+
+message(STATUS "lwx--------EIGEN_ROOT=" ${EIGEN_ROOT})  
 
 string(TOLOWER "${PROJECT_NAME}" PROJECT_NAME_LOWERCASE)
 find_program(DPKG_PROGRAM dpkg DOC "dpkg program of Debian-based systems")
@@ -366,7 +416,7 @@ add_executable(stereo3
   # src/factor/integration_base.h
   src/imu/imu_process.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/stereo3.cpp 
-  src/wx_ros2_io.cpp
+  src/wx_ros1_io.cpp
   src/wx_yaml_io.cpp
   src/wx_system.cpp
   src/utility/utility.cpp
@@ -374,6 +424,7 @@ add_executable(stereo3
 )
 
 target_link_libraries(stereo3
+  ${catkin_LIBRARIES}
   ${STD_CXX_FS} basalt::opencv basalt::basalt-headers TBB::tbb
   # basalt::magic_enum rosbag apriltag opengv nlohmann::json fmt::fmt 
   basalt::magic_enum opengv nlohmann::json fmt::fmt 
@@ -386,25 +437,23 @@ target_include_directories(stereo3 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_definitions(stereo3 PUBLIC ${BASALT_COMPILE_DEFINITIONS})
 
 
-# added on 2023-11-10
-ament_target_dependencies(stereo3 rclcpp std_msgs 
-  sensor_msgs
-  sensor_pub
-  message_filters
-  nav_msgs
-  cv_bridge
-  myodom
-  )
-
-install(TARGETS
-  stereo3
-  DESTINATION lib/${PROJECT_NAME}
+#############
+## Install ##
+#############
+## 添加可执行文件或者库文件，Mark executables and/or libraries for installation
+install(TARGETS stereo3
+    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
+install(DIRECTORY launch config
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+  
+file(GLOB EXTERN_LIB ../../devel/lib/*.so)
 
-ament_package()
-# the end.
+MESSAGE(STATUS "EXTERN_LIB= " ${EXTERN_LIB})
+
+install(FILES ${EXTERN_LIB}
+  DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+)

@@ -2,7 +2,7 @@
 // @author: wxliu
 // @date: 2023-11-9
 
-#include "wx_ros2_io.h"
+#include "wx_ros1_io.h"
 #include <basalt/image/image.h>
 // #include <basalt/utils/vis_utils.h>
 #include <opencv2/highgui.hpp>
@@ -17,87 +17,55 @@ extern basalt::OpticalFlowBase::Ptr opt_flow_ptr; // 2023-11-28.
 
 using namespace wx;
 
-// CRos2IO::CRos2IO(bool use_imu)
-CRos2IO::CRos2IO(bool use_imu, int fps, long dt_ns)
-  : Node("CRos2IO")
+CRos1IO::CRos1IO(const ros::NodeHandle& pnh, bool use_imu, int fps, long dt_ns)
+  : pnh_(pnh)
   , fps_(fps)
   , dt_ns_(dt_ns)
-  , sub_image0_(this, "/image_left")
-  , sub_image1_(this, "/image_right")
+  , sub_image0_(pnh_, "/image_left", 5)
+  , sub_image1_(pnh_, "/image_right", 5)
   // , sub_image0_info_(this, "/image_left_info")
   // , sub_image1_info_(this, "/image_right_info")
   // , sync_stereo_(sub_image0_, sub_image1_, sub_image0_info_, sub_image1_info_, 10) // method 1
 {
   use_imu_ = use_imu;
-  //std::cout << "create imu subscription\n";
-/*  
-  if(use_imu_)
-  sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(
-    "/imu", 10, std::bind(&CRos2IO::imu_callback, this, _1));
-*/
-
-  //std::cout << "create image subscription\n";
-  // sync_stereo_.registerCallback(&CRos2IO::StereoCb, this); // method 1
-
-  // sync_stereo_.emplace(sub_image0_, sub_image1_, sub_image0_info_, sub_image1_info_, 5); // method 2
   sync_stereo_.emplace(sub_image0_, sub_image1_, 5); // method 2
-/*  
-  sync_stereo_->registerCallback(
-    boost::bind(&CRos2IO::StereoCb, this, _1, _2, _3, _4));
-*/
-  sync_stereo_->registerCallback(&CRos2IO::StereoCb, this);
+  sync_stereo_->registerCallback(&CRos1IO::StereoCb, this);
 
-  pub_point_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-    "/point_cloud2", 10);
-  pub_odom_ = this->create_publisher<nav_msgs::msg::Odometry>("/pose_odom", 10);
-
- #if 0 
-  // 用于停止ros2节点
-  sub_stop_ = this->create_subscription<std_msgs::msg::Empty>(
-    "/sys_stop", 10, [this](const std_msgs::msg::Empty::SharedPtr msg) {
-      sys_stop_callback(msg);
-    }
-  );
-#endif
+  pub_point_ = pnh_.advertise<sensor_msgs::PointCloud2>("/point_cloud2", 10); 
+  pub_odom_ = pnh_.advertise<nav_msgs::Odometry>("/pose_odom", 10);
 
   path_msg_.poses.reserve(1024); // reserve的作用是更改vector的容量（capacity），使vector至少可以容纳n个元素。
                                  // 如果n大于vector当前的容量，reserve会对vector进行扩容。其他情况下都不会重新分配vector的存储空间
 
-  pub_path_ = this->create_publisher<nav_msgs::msg::Path>("/path_odom", 2);
+  // pub_path_ = this->create_publisher<nav_msgs::msg::Path>("/path_odom", 2);
+  pub_path_ = pnh_.advertise<nav_msgs::Path>("/path_odom", 1);
 
 
 
   if(use_imu_)
   {
-    //同一个组别，类型设置为Reentrant
-    rclcpp::CallbackGroup::SharedPtr callback_group_sub_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-    auto sub_opt = rclcpp::SubscriptionOptions();
-    sub_opt.callback_group = callback_group_sub_;
-
-    // sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS(), imu_callback, sub_opt);
-    sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS(), std::bind(&CRos2IO::imu_callback, this, _1), sub_opt);
+    // sub_imu_ = pnh.subscribe("/imu", 2000, imu_callback, ros::TransportHints().tcpNoDelay());
+    sub_imu_ = pnh_.subscribe("/imu", 2000, &CRos1IO::imu_callback, this, ros::TransportHints().tcpNoDelay());
+    
   }
   
-// #ifdef SHOW_WARPED_IMG
-  pub_warped_img = this->create_publisher<sensor_msgs::msg::Image>("/feature_img", 1); // feature_img // warped_img
-// #endif
+  // pub_warped_img = this->create_publisher<sensor_msgs::msg::Image>("/feature_img", 1); // feature_img // warped_img
+  pub_warped_img = pnh_.advertise<sensor_msgs::Image>("feature_img", 5);
 
-  pub_my_odom_ = this->create_publisher<myodom::msg::MyOdom>("/my_odom", 10);
+  pub_my_odom_ = pnh_.advertise<myodom::MyOdom>("/my_odom", 10);
  
 }
 
-void CRos2IO::StereoCb(const sensor_msgs::msg::Image::SharedPtr &image0_ptr,
-  const sensor_msgs::msg::Image::SharedPtr &image1_ptr/*,
-  const sensor_pub::msg::ImageInfo::SharedPtr &image0_info_ptr,
-  const sensor_pub::msg::ImageInfo::SharedPtr &image1_info_ptr*/)
+void CRos1IO::StereoCb(const sm::ImageConstPtr& image0_ptr,
+  const sm::ImageConstPtr& image1_ptr)
 {
   //std::cout << "received images.\n";
   
-  u_int64_t t_ns = image0_ptr->header.stamp.nanosec +
+  u_int64_t t_ns = image0_ptr->header.stamp.nsec +
     image0_ptr->header.stamp.sec * 1e9;
 
   basalt::OpticalFlowInput::Ptr data(new basalt::OpticalFlowInput);
-  data->img_data.resize(CRos2IO::NUM_CAMS);
+  data->img_data.resize(CRos1IO::NUM_CAMS);
   data->t_ns = t_ns;
 
   const uint8_t* data_in0 = nullptr;
@@ -159,9 +127,9 @@ void CRos2IO::StereoCb(const sensor_msgs::msg::Image::SharedPtr &image0_ptr,
   feedImage_(data);
 }
 
-void CRos2IO::imu_callback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) const
+void CRos1IO::imu_callback(const sensor_msgs::ImuConstPtr& imu_msg) const
 {
-  // double t = imu_msg->header.stamp.sec + imu_msg->header.stamp.nanosec * (1e-9);
+  // double t = imu_msg->header.stamp.sec + imu_msg->header.stamp.nsec * (1e-9);
   double dx = imu_msg->linear_acceleration.x;
   double dy = imu_msg->linear_acceleration.y;
   double dz = imu_msg->linear_acceleration.z;
@@ -170,7 +138,7 @@ void CRos2IO::imu_callback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) const
   double rz = imu_msg->angular_velocity.z;
 
 #if USE_TIGHT_COUPLING
-  int64_t t_ns = imu_msg->header.stamp.nanosec + imu_msg->header.stamp.sec * 1e9;
+  int64_t t_ns = imu_msg->header.stamp.nsec + imu_msg->header.stamp.sec * 1e9;
   basalt::ImuData<double>::Ptr data(new basalt::ImuData<double>);
   data->t_ns = t_ns;
   data->accel = Vector3d(dx, dy, dz);
@@ -179,7 +147,7 @@ void CRos2IO::imu_callback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) const
   feedImu_(data);
 
 #else // LOOSE_COUPLING
-  double t = imu_msg->header.stamp.sec + imu_msg->header.stamp.nanosec * (1e-9);
+  double t = imu_msg->header.stamp.sec + imu_msg->header.stamp.nsec * (1e-9);
   Vector3d acc(dx, dy, dz);
   Vector3d gyr(rx, ry, rz);
   inputIMU_(t, acc, gyr);
@@ -189,7 +157,7 @@ void CRos2IO::imu_callback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) const
 #endif
 
 #if 0
-  double t = imu_msg->header.stamp.sec + imu_msg->header.stamp.nanosec * (1e-9);
+  double t = imu_msg->header.stamp.sec + imu_msg->header.stamp.nsec * (1e-9);
   char szTime[60] = { 0 };
   sprintf(szTime, "%f", t);
   // std::cout << "[lwx] imu timestamp t=" << szTime << "acc = " << acc.transpose() << "  gyr = " << gyr.transpose() << std::endl;
@@ -197,31 +165,35 @@ void CRos2IO::imu_callback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) const
 #endif
 }
 
-void CRos2IO::PublishPoints(basalt::VioVisualizationData::Ptr data)
+void CRos1IO::PublishPoints(basalt::VioVisualizationData::Ptr data)
 {
-  if (pub_point_ == nullptr || pub_point_->get_subscription_count() == 0) 
+  if (pub_point_.getNumSubscribers() == 0)
     return;
 
-  sensor_msgs::msg::PointCloud2 cloud_msg;
+  sensor_msgs::PointCloud2 cloud_msg;
   // Time (int64_t nanoseconds=0, rcl_clock_type_t clock=RCL_SYSTEM_TIME)
-  cloud_msg.header.stamp = rclcpp::Time(data->t_ns);//this->now();
+  cloud_msg.header.stamp = ros::Time(data->t_ns * 1.0 * 1e-9);//this->now();
   // cloud_msg.header.stamp.sec = data->t_ns / 1e9;
-  // cloud_msg.header.stamp.nanosec = data->t_ns % (1e9);
+  // cloud_msg.header.stamp.nsec = data->t_ns % (1e9);
   cloud_msg.header.frame_id = "odom";
+  cloud_msg.point_step = 12; // 16 // 一个点占16个字节 Length of a point in bytes
+  //cloud.fields = MakePointFields("xyzi"); // 描述了二进制数据块中的通道及其布局。
+	cloud_msg.fields = MakePointFields("xyz"); // tmp comment 2023-12-6
+/*
   cloud_msg.height = 1;
   cloud_msg.width = 0;
   cloud_msg.fields.resize(3);
   cloud_msg.fields[0].name = "x";
   cloud_msg.fields[0].offset = 0;
-  cloud_msg.fields[0].datatype = sensor_msgs::msg::PointField::FLOAT32;
+  cloud_msg.fields[0].datatype = sensor_msgs::PointField::FLOAT32;
   cloud_msg.fields[0].count = 1;
   cloud_msg.fields[1].name = "y";
   cloud_msg.fields[1].offset = 4;
-  cloud_msg.fields[1].datatype = sensor_msgs::msg::PointField::FLOAT32;
+  cloud_msg.fields[1].datatype = sensor_msgs::PointField::FLOAT32;
   cloud_msg.fields[1].count = 1;
   cloud_msg.fields[2].name = "z";
   cloud_msg.fields[2].offset = 8;
-  cloud_msg.fields[2].datatype = sensor_msgs::msg::PointField::FLOAT32;
+  cloud_msg.fields[2].datatype = sensor_msgs::PointField::FLOAT32;
   cloud_msg.fields[2].count = 1;
   cloud_msg.is_bigendian = false;
   cloud_msg.point_step = 12;
@@ -244,18 +216,37 @@ void CRos2IO::PublishPoints(basalt::VioVisualizationData::Ptr data)
     ++iter_y;
     ++iter_z;
   }
-  // 发布点云
-  pub_point_->publish(cloud_msg);
+*/
+
+// int total_size = data->points.size();
+cloud_msg.height = 1;
+cloud_msg.width = data->points.size();
+cloud_msg.data.resize(cloud_msg.width * cloud_msg.point_step); // point_step指示每个点的字节数为16字节
+
+int i = 0;
+for (const auto& point : data->points) {
+    auto* ptr = reinterpret_cast<float*>(cloud_msg.data.data() + i * cloud_msg.point_step);
+
+    ptr[0] = point.x();
+    ptr[1] = point.y();
+    ptr[2] = point.z();
+    //ptr[3] = static_cast<float>(patch.vals[0] / 255.0); // 图像强度转换为颜色
+    
+    i++;
 }
 
-void CRos2IO::PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data)
+  // 发布点云
+  pub_point_.publish(cloud_msg);
+}
+
+void CRos1IO::PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data)
 {
-  if (pub_odom_ == nullptr || pub_odom_->get_subscription_count() == 0) 
+  if (pub_odom_.getNumSubscribers() == 0) 
     return;
 
   // 创建nav_msgs::msg::Odometry消息对象
-  nav_msgs::msg::Odometry odom_msg;
-  odom_msg.header.stamp = rclcpp::Time(data->t_ns);//this->now();
+  nav_msgs::Odometry odom_msg;
+  odom_msg.header.stamp = ros::Time(data->t_ns * 1.0 * 1e-9);//this->now();
   odom_msg.header.frame_id = "odom";
   odom_msg.pose.pose.position.x = data->T_w_i.translation().x();
   odom_msg.pose.pose.position.y = data->T_w_i.translation().y();
@@ -266,25 +257,23 @@ void CRos2IO::PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data)
   odom_msg.pose.pose.orientation.w = data->T_w_i.unit_quaternion().w();
 
   // 发布位姿
-  pub_odom_->publish(odom_msg);
-
+  pub_odom_.publish(odom_msg);
   
 }
 
-void CRos2IO::Reset()
+void CRos1IO::Reset()
 {
     path_msg_.poses.clear();
     path_msg_.poses.reserve(1024);
 }
 
-void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
+void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
 {  
-  geometry_msgs::msg::PoseStamped pose_msg;
+  geometry_msgs::PoseStamped pose_msg;
   // pose_msg.header.stamp = this->now();
-  // pose_msg.header.stamp = ros::Time(data->t_ns * 1.0 / 1e9);  ///< timestamp of the state in nanoseconds;  // 帧采集时间
-  pose_msg.header.stamp = rclcpp::Time(data->t_ns);
+  pose_msg.header.stamp = ros::Time(data->t_ns * 1.0 / 1e9);  ///< timestamp of the state in seconds [nanoseconds];  // 帧采集时间
   // pose_msg.header.stamp.sec = data->t_ns / 1e9;
-  // pose_msg.header.stamp.nanosec = data->t_ns % 1e9;
+  // pose_msg.header.stamp.nsec = data->t_ns % 1e9;
 
   pose_msg.header.frame_id = "odom";
   // Sophus2Ros(tf, pose_msg.pose);
@@ -372,11 +361,11 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
       // std::cout << "velocity is " << (period_distance / 0.2) << std::endl;
       // std::cout << "velocity is " << (period_distance / delta_s) << std::endl;
 
-      if (pub_my_odom_ != nullptr && pub_my_odom_->get_subscription_count() > 0)
+      if (pub_my_odom_.getNumSubscribers() == 0)
       {
-        myodom::msg::MyOdom odom_msg;
+        myodom::MyOdom odom_msg;
         // odom_msg.header.stamp = rclcpp::Time(data->t_ns);
-        odom_msg.header.stamp = rclcpp::Time(data->t_ns - dt_ns_); // complementary timestamp
+        odom_msg.header.stamp = ros::Time((data->t_ns - dt_ns_) * 1.0 /1e-9); // complementary timestamp
         odom_msg.header.frame_id = "odom";
 
         double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9); 
@@ -387,7 +376,7 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
         odom_msg.total_odom = total_distance;
 
         // publish velocity, period odom and total odom.
-        pub_my_odom_->publish(odom_msg);
+        pub_my_odom_.publish(odom_msg);
       }
 
       t_ns = data->t_ns;
@@ -397,34 +386,34 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
 
 #endif
 
-  if (pub_odom_ != nullptr && pub_odom_->get_subscription_count() > 0)
+  if (pub_odom_.getNumSubscribers() == 0)
   {
-    nav_msgs::msg::Odometry odom_msg;
+    nav_msgs::Odometry odom_msg;
     // odom_msg.header.stamp = time;
     // odom_msg.header.frame_id = "odom";
     odom_msg.header = pose_msg.header;
     odom_msg.pose.pose = pose_msg.pose;
 
     // 发布位姿
-    pub_odom_->publish(odom_msg);
+    pub_odom_.publish(odom_msg);
   }
  
-  if (pub_path_ == nullptr || pub_path_->get_subscription_count() == 0)
+  if (pub_path_.getNumSubscribers() == 0)
     return ;
 
   // 发布轨迹   path_odom话题
   // path_msg_.header.stamp = this->now();
-  path_msg_.header.stamp = rclcpp::Time(data->t_ns * 1.0 / 1e9);  ///< timestamp of the state in nanoseconds;  // 帧采集时间
+  path_msg_.header.stamp = ros::Time(data->t_ns * 1.0 / 1e9);  ///< timestamp of the state in nanoseconds;  // 帧采集时间
   path_msg_.header.frame_id = "odom";
   path_msg_.poses.push_back(pose_msg);
-  pub_path_->publish(path_msg_);
+  pub_path_.publish(path_msg_);
 
   // std::cout << " postion: " << pose_msg.pose.position.x << ", " 
   //   << pose_msg.pose.position.y << ", " << pose_msg.pose.position.z << std::endl;
 
 }
 
-inline void CRos2IO::getcolor(float p, float np, float& r, float& g, float& b) {
+inline void CRos1IO::getcolor(float p, float np, float& r, float& g, float& b) {
   float inc = 4.0 / np;
   float x = p * inc;
   r = 0.0f;
@@ -453,7 +442,7 @@ inline void CRos2IO::getcolor(float p, float np, float& r, float& g, float& b) {
     b = 1.0f - (x - 5);
 }
 
-void CRos2IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
+void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
 {
   static cv::Mat disp_frame;
 
@@ -666,8 +655,8 @@ void CRos2IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
     cv::waitKey(1);
     #endif
 
-    sensor_msgs::msg::Image::SharedPtr msg = cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", disp_frame).toImageMsg();
-    msg->header.stamp = rclcpp::Time(data->t_ns * 1.0 / 1e9);
+    sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", disp_frame).toImageMsg();
+    msg->header.stamp = ros::Time(data->t_ns * 1.0 / 1e9);
     msg->header.frame_id = "odom";
     // warped_img.header = image0_ptr->header;
 /*
@@ -679,70 +668,8 @@ void CRos2IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
     // warped_img.data = image0_ptr->data;
     // msg->encoding = "mono8";
 */    
-    pub_warped_img->publish(*msg);
+    pub_warped_img.publish(*msg);
     
   }
     
 }
-
-#ifdef _TEST_ROS2_IO
-int main(int argc, char * argv[])
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<CRos2IO>());
-  rclcpp::shutdown();
-  return 0;
-}
-#endif
-
-#if 0
-
-// this section is a example of ros2 usage which is not need derived from 'rclcpp::Node'.
-
-// for subsriber
-rclcpp::Node::SharedPtr g_node = nullptr;
-
-void topic_callback(const std_msgs::msg::String & msg)
-{
-  RCLCPP_INFO(g_node->get_logger(), "I heard: '%s'", msg.data.c_str());
-}
-
-int main(int argc, char * argv[])
-{
-  rclcpp::init(argc, argv);
-  g_node = rclcpp::Node::make_shared("minimal_subscriber");
-  auto subscription =
-    g_node->create_subscription<std_msgs::msg::String>("topic", 10, topic_callback);
-  rclcpp::spin(g_node);
-  rclcpp::shutdown();
-  return 0;
-}
-
-// for publisher
-int main(int argc, char * argv[])
-{
-  rclcpp::init(argc, argv);
-  auto node = rclcpp::Node::make_shared("minimal_publisher");
-  auto publisher = node->create_publisher<std_msgs::msg::String>("topic", 10);
-  std_msgs::msg::String message;
-  auto publish_count = 0;
-  rclcpp::WallRate loop_rate(500ms);
-
-  while (rclcpp::ok()) {
-    message.data = "Hello, world! " + std::to_string(publish_count++);
-    RCLCPP_INFO(node->get_logger(), "Publishing: '%s'", message.data.c_str());
-    try {
-      publisher->publish(message);
-      rclcpp::spin_some(node);
-    } catch (const rclcpp::exceptions::RCLError & e) {
-      RCLCPP_ERROR(
-        node->get_logger(),
-        "unexpectedly failed with %s",
-        e.what());
-    }
-    loop_rate.sleep();
-  }
-  rclcpp::shutdown();
-  return 0;
-}
-#endif

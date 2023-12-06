@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<?xml-model href="http://download.ros.org/schema/package_format2.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!-- <?xml-model href="http://download.ros.org/schema/package_format2.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?> -->
 <package format="2">
   <name>stereo3</name>
   <version>0.0.1</version>
@@ -11,20 +11,12 @@
   <author>Morgan Quigley</author>
   <author email="wx@wx.com">wx</author>
 
-  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>catkin</buildtool_depend>
 
-  <build_depend>rclcpp</build_depend>
-  <build_depend>rclcpp_components</build_depend>
-  <build_depend>std_msgs</build_depend>
-  <build_depend>sensor_msgs</build_depend>
-
-  <exec_depend>rclcpp</exec_depend>
-  <exec_depend>rclcpp_components</exec_depend>
-  <exec_depend>std_msgs</exec_depend>
-  <exec_depend>sensor_msgs</exec_depend>
-
-  <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_lint_common</test_depend>
+  <depend>roscpp</depend>
+  <depend>std_msgs</depend>
+  <depend>rosmsg</depend>
+  <depend>sensor_msgs</depend>
 
   <depend>sensor_pub</depend>
   <depend>message_filters</depend>
@@ -33,6 +25,5 @@
   <depend>myodom</depend> <!--add this module to ensure find it before compile-->
 
   <export>
-    <build_type>ament_cmake</build_type>
   </export>
 </package>

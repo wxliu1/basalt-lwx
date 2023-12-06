@@ -19,10 +19,10 @@ struct TYamlIO
     // virtual ~TYamlIO() noexcept = default;
     bool show_gui = false;
     bool print_queue = false;
-    std::string cam_calib_path = "/home/lwx/dataset/config/viobot_b_calib_vo.json";
+    std::string cam_calib_path = "/root/lwx_dataset/config/viobot_b_calib_vo.json";
     std::string dataset_path;
     std::string dataset_type;
-    std::string config_path = "/home/lwx/dataset/config/viobot_b_vio_config.json";
+    std::string config_path = "/root/lwx_dataset/config/viobot_b_vio_config.json";
     //std::string config_path = "../data/kitti_config.json";
     std::string result_path;
     std::string trajectory_fmt;

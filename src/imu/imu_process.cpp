@@ -44,6 +44,8 @@ void ImuProcess::setExtrinsic(const Matrix3d& ric, const Vector3d& tic)
               <<  this->ric[0] << std::endl
               << "tic="
               <<  this->tic[0].transpose() << std::endl;
+
+    std::cout << this->ric[0](0, 0) << std::endl;         
 }
 
 #else
