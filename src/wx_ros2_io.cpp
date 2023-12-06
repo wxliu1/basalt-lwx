@@ -414,7 +414,8 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
 
   // 发布轨迹   path_odom话题
   // path_msg_.header.stamp = this->now();
-  path_msg_.header.stamp = rclcpp::Time(data->t_ns * 1.0 / 1e9);  ///< timestamp of the state in nanoseconds;  // 帧采集时间
+  // path_msg_.header.stamp = rclcpp::Time(data->t_ns * 1.0 / 1e9);  ///< timestamp of the state in nanoseconds;  // 帧采集时间
+  path_msg_.header.stamp = rclcpp::Time(data->t_ns);  ///< timestamp of the state in nanoseconds;  // 帧采集时间
   path_msg_.header.frame_id = "odom";
   path_msg_.poses.push_back(pose_msg);
   pub_path_->publish(path_msg_);
@@ -667,7 +668,8 @@ void CRos2IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
     #endif
 
     sensor_msgs::msg::Image::SharedPtr msg = cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", disp_frame).toImageMsg();
-    msg->header.stamp = rclcpp::Time(data->t_ns * 1.0 / 1e9);
+    // msg->header.stamp = rclcpp::Time(data->t_ns * 1.0 / 1e9);
+    msg->header.stamp = rclcpp::Time(data->t_ns * 1.0);
     msg->header.frame_id = "odom";
     // warped_img.header = image0_ptr->header;
 /*
