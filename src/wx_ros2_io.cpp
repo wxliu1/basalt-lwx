@@ -17,8 +17,11 @@ extern basalt::OpticalFlowBase::Ptr opt_flow_ptr; // 2023-11-28.
 
 using namespace wx;
 
-CRos2IO::CRos2IO(bool use_imu)
+// CRos2IO::CRos2IO(bool use_imu)
+CRos2IO::CRos2IO(bool use_imu, int fps, long dt_ns)
   : Node("CRos2IO")
+  , fps_(fps)
+  , dt_ns_(dt_ns)
   , sub_image0_(this, "/image_left")
   , sub_image1_(this, "/image_right")
   // , sub_image0_info_(this, "/image_left_info")
@@ -97,16 +100,46 @@ void CRos2IO::StereoCb(const sensor_msgs::msg::Image::SharedPtr &image0_ptr,
   data->img_data.resize(CRos2IO::NUM_CAMS);
   data->t_ns = t_ns;
 
+  const uint8_t* data_in0 = nullptr;
+  const uint8_t* data_in1 = nullptr;
+
+#ifdef  _NOISE_SUPPRESSION_
+  auto image0 = cb::toCvShare(image0_ptr)->image; // cv::Mat类型
+  auto image1 = cb::toCvShare(image1_ptr)->image;
+  // auto image0 = cb::toCvCopy(image0_ptr)->image;  // cv::Mat类型
+  // auto image1 = cb::toCvCopy(image1_ptr)->image;
+
+  // cv::imshow("original image", image0);	
+  // cv::waitKey(0);
+#ifdef _GAUSSIAN_BlUR_
+  cv::GaussianBlur(image0, image0, cv::Size(3, 3), 0); // 高斯滤波
+  cv::GaussianBlur(image1, image1, cv::Size(3, 3), 0); // 高斯滤波
+#else  
+  cv::medianBlur(image0, image0, 3); // 中值滤波
+  cv::medianBlur(image1, image1, 3); // 中值滤波
+#endif
+
+  data_in0 = image0.ptr();
+  data_in1 = image1.ptr();
+
+  // cv::imshow("noise suppression image", image0); // image_ns
+  // cv::waitKey(0);
+  // return ;
+#else
+  data_in0 = (const uint8_t*)image0_ptr->data.data();
+  data_in1 = (const uint8_t*)image1_ptr->data.data();
+#endif
+
   // 拷贝左目图像数据
   data->img_data[0].img.reset(new basalt::ManagedImage<uint16_t>(image0_ptr->width,
     image0_ptr->height));
 
   // 图像数据转化为uint16_t
-  const uint8_t* data_in = (const uint8_t*)image0_ptr->data.data();
+  // const uint8_t* data_in = (const uint8_t*)image0_ptr->data.data();
   uint16_t* data_out = data->img_data[0].img->ptr;
   size_t full_size = image0_ptr->width * image0_ptr->height;
   for (size_t i = 0; i < full_size; i++) {
-    int val = data_in[i];
+    int val = data_in0[i];
     val = val << 8;
     data_out[i] = val;
   }
@@ -114,11 +147,11 @@ void CRos2IO::StereoCb(const sensor_msgs::msg::Image::SharedPtr &image0_ptr,
   // 拷贝右目图像数据
   data->img_data[1].img.reset(new basalt::ManagedImage<uint16_t>(image1_ptr->width,
     image1_ptr->height));
-  data_in = (const uint8_t*)image1_ptr->data.data();
+  // data_in = (const uint8_t*)image1_ptr->data.data();
   data_out = data->img_data[1].img->ptr;
   full_size = image1_ptr->width * image1_ptr->height;
   for (size_t i = 0; i < full_size; i++) {
-    int val = data_in[i];
+    int val = data_in1[i];
     val = val << 8;
     data_out[i] = val;
   }
@@ -263,15 +296,21 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
   pose_msg.pose.orientation.z = data->T_w_i.unit_quaternion().z();
   pose_msg.pose.orientation.w = data->T_w_i.unit_quaternion().w();
 
-  if(1) // compute velocity.
+#ifdef _PUBLISH_VELOCITY_
+  // if(1) // compute velocity.
   {
     // static constexpr int DATA_CNT = 5;
     // static constexpr double fps_inv = 1 / 25; // assume fps = 25
-
+/*
     static constexpr int DATA_CNT = 10;
     static constexpr double fps_inv = 1 / 50; // assume fps = 50
     // static constexpr int64_t dt_ns = (46472013 - 1) * 1e9 + 924371744;
     static constexpr int64_t dt_ns = (46472013 - 0) * 1e9 +  643412768; // modified 2023-12-5.
+*/
+    // use member variable 'dt_ns_'
+    double fps_inv = 1 / fps_;
+    int DATA_CNT = 0.2 * fps_;
+
     static int odometry_cnt = 0;
     static int64_t t_ns = 0;
     static double total_distance = 0.0;
@@ -337,7 +376,7 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
       {
         myodom::msg::MyOdom odom_msg;
         // odom_msg.header.stamp = rclcpp::Time(data->t_ns);
-        odom_msg.header.stamp = rclcpp::Time(data->t_ns - dt_ns); // complementary timestamp
+        odom_msg.header.stamp = rclcpp::Time(data->t_ns - dt_ns_); // complementary timestamp
         odom_msg.header.frame_id = "odom";
 
         double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9); 
@@ -356,6 +395,7 @@ void CRos2IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
 
   }
 
+#endif
 
   if (pub_odom_ != nullptr && pub_odom_->get_subscription_count() > 0)
   {

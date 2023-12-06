@@ -45,6 +45,7 @@ using std::placeholders::_2;
 using std::placeholders::_3;
 using std::placeholders::_4;
 
+// #define _NOISE_SUPPRESSION_
 
 template<>
 struct rclcpp::TypeAdapter<std::string, std_msgs::msg::String>
@@ -78,7 +79,7 @@ using Vector2d = Eigen::Vector2d;
 using Vector3d = Eigen::Vector3d;
 using Matrix3d = Eigen::Matrix3d;
 // using Quaterniond = Eigen::Quaterniond; 
-// namespace cb = cv_bridge;
+namespace cb = cv_bridge;
 // namespace sm = sensor_msgs;
 // namespace gm = geometry_msgs;
 namespace mf = message_filters;
@@ -86,7 +87,7 @@ namespace mf = message_filters;
 class CRos2IO : public rclcpp::Node
 {
 public:    
-    CRos2IO(bool use_imu);
+    CRos2IO(bool use_imu, int fps, long dt_ns = 0);
     void PublishPoints(basalt::VioVisualizationData::Ptr data);
     void PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data);
     // void SetImu(bool bl);
@@ -128,6 +129,9 @@ public:
     std::function<void(double t, const Vector3d &linearAcceleration, const Vector3d &angularVelocity)>inputIMU_;
 
 private:
+    // double dt_s_ { 0.0 }; // if dt_s_ equal to '0.0', it's mean our sensor is already timestamp synchronization with atp.
+    long dt_ns_ { 0 };
+    int fps_ { 50 };
     bool use_imu_ = false;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
     mf::Subscriber<sensor_msgs::msg::Image> sub_image0_;

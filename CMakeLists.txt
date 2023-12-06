@@ -7,6 +7,20 @@ add_definitions(-D_WX_TEST) # define '_WX_TEST' macro
 add_compile_definitions(SHOW_FLOW_PATCHES)
 add_definitions(-DSHOW_TRACKED_POINTS)
 
+# if you want to use noise suppression, please open the two lines below.
+option(USE_NOISE_SUPPRESSION "Set to ON if you are using noise suppression" OFF)
+if(USE_NOISE_SUPPRESSION)
+  add_compile_definitions(_NOISE_SUPPRESSION_)
+  add_compile_definitions(_GAUSSIAN_BlUR_)
+endif()
+
+# publish velocity
+option(PUBLISH_VELOCITY "Set to ON if you are publishing velocity" ON) # ON or OFF
+if(PUBLISH_VELOCITY)
+    add_compile_definitions(_PUBLISH_VELOCITY_)
+endif()
+
+
 # 2023-11-10
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)

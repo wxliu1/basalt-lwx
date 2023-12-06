@@ -312,7 +312,7 @@ int main(int argc, char** argv) {
   // 2023-11-10.
   rclcpp::init(argc, argv);
   //auto node = std::make_shared<CRos2IO>();
-  auto node = std::make_shared<CRos2IO>(sys_cfg_.use_imu);
+  auto node = std::make_shared<CRos2IO>(sys_cfg_.use_imu, yaml.fps, yaml.dt_ns);
 
   node->inputIMU_ = std::bind(&ImuProcess::inputIMU, &imu, std::placeholders::_1, 
     std::placeholders::_2, std::placeholders::_3);

@@ -40,6 +40,8 @@ void TYamlIO::ReadConfiguration()
     config["num_threads"] = num_threads;
     config["use_imu"] = use_imu;
     config["use_double"] = use_double;
+    config["dt_ns"] = dt_ns;
+    config["fps"] = fps;
 /*
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
                               0.0, 1.0, 0.0, 0.0,
@@ -77,6 +79,8 @@ void TYamlIO::ReadConfiguration()
     num_threads = config["num_threads"].as<int>();
     use_imu = config["use_imu"].as<bool>();
     use_double = config["use_double"].as<bool>();
+    dt_ns = config["dt_ns"].as<long>();
+    fps = config["fps"].as<int>();
 
     // read imu_cam extrinsic
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
