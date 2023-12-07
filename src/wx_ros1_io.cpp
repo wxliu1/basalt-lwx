@@ -444,6 +444,9 @@ inline void CRos1IO::getcolor(float p, float np, float& r, float& g, float& b) {
 
 void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
 {
+  if (pub_warped_img.getNumSubscribers() == 0)
+    return;
+
   static cv::Mat disp_frame;
 
   // step1 convert image
