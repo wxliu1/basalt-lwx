@@ -4,8 +4,14 @@ project(stereo3)
 
 add_definitions(-D_WX_TEST) # define '_WX_TEST' macro
 # add_compile_definitions(_OPEN_CV_SHOW_=1)
-add_compile_definitions(SHOW_FLOW_PATCHES)
-add_definitions(-DSHOW_TRACKED_POINTS)
+
+
+option(PUBLISH_FEATURE_IMAGE "Set to ON if you are publishing feature image." ON) # ON or OFF
+if(PUBLISH_FEATURE_IMAGE)
+  add_compile_definitions(_PUBLISH_FEATURE_IMAGE_)
+  add_compile_definitions(SHOW_FLOW_PATCHES)
+  add_definitions(-DSHOW_TRACKED_POINTS)
+endif()
 
 # if you want to use noise suppression, please open the two lines below.
 option(USE_NOISE_SUPPRESSION "Set to ON if you are using noise suppression" OFF)

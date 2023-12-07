@@ -347,7 +347,9 @@ int main(int argc, char** argv) {
 
         if (data.get()) {
           node->PublishPoints(data);
+          #ifdef _PUBLISH_FEATURE_IMAGE_
           node->PublishFeatureImage(data);
+          #endif
         } else {
           break;
         }

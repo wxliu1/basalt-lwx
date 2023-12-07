@@ -480,9 +480,9 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   } // for (size_t i = 0
 
   // 添加关键帧策略判断：如果当前帧cam0(左目) 观测到的3d点与未能观测到3d点的特征点数比值小于一定的阈值。
-  // vio_new_kf_keypoints_thresh默认为0.7，vio_min_frames_after_kf默认为5，
+  // vio_new_kf_keypoints_thresh默认为0.7，vio_min_frames_after_kf默认为1，
   // 当前帧cam0跟踪的点的个数与当前帧总的点的个数的比值如果小于0.7，
-  // 并且从上一个关键帧之后的帧的数量大于5，则当前帧应该成为关键帧。
+  // 并且从上一个关键帧之后的帧的数量大于vio_min_frames_after_kf，则当前帧应该成为关键帧。
   if (Scalar(connected0) / (connected0 + unconnected_obs0.size()) <
           Scalar(config.vio_new_kf_keypoints_thresh) &&
       frames_after_kf > config.vio_min_frames_after_kf)

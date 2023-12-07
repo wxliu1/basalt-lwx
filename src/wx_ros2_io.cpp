@@ -456,6 +456,9 @@ inline void CRos2IO::getcolor(float p, float np, float& r, float& g, float& b) {
 
 void CRos2IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
 {
+  if (pub_warped_img == nullptr || pub_warped_img->get_subscription_count() == 0) 
+    return;
+
   static cv::Mat disp_frame;
 
   // step1 convert image
