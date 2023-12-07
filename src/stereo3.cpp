@@ -212,7 +212,8 @@ int main(int argc, char** argv) {
   struct TYamlIO yaml;
   yaml.ReadConfiguration();
   std::cout << "calib_path=" << yaml.cam_calib_path << std::endl
-    << "config_path=" << yaml.config_path << std::endl;
+    << "config_path=" << yaml.config_path << std::endl
+    << "dt_ns = " << yaml.dt_ns << std::endl;
   // the end.
 
   // 2023-11-13
