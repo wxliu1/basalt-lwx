@@ -361,11 +361,11 @@ void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
       // std::cout << "velocity is " << (period_distance / 0.2) << std::endl;
       // std::cout << "velocity is " << (period_distance / delta_s) << std::endl;
 
-      if (pub_my_odom_.getNumSubscribers() == 0)
+      if (pub_my_odom_.getNumSubscribers() > 0)
       {
         myodom::MyOdom odom_msg;
         // odom_msg.header.stamp = rclcpp::Time(data->t_ns);
-        odom_msg.header.stamp = ros::Time((data->t_ns - dt_ns_) * 1.0 /1e-9); // complementary timestamp
+        odom_msg.header.stamp = ros::Time((data->t_ns - dt_ns_) * 1.0 /1e9); // complementary timestamp
         odom_msg.header.frame_id = "odom";
 
         double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9); 
@@ -386,7 +386,7 @@ void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
 
 #endif
 
-  if (pub_odom_.getNumSubscribers() == 0)
+  if (pub_odom_.getNumSubscribers() > 0)
   {
     nav_msgs::Odometry odom_msg;
     // odom_msg.header.stamp = time;
