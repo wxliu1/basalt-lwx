@@ -69,6 +69,7 @@ public:
     void Reset();
     void PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data); // TODO: transfer timestamp of sampling.
     void PublishFeatureImage(basalt::VioVisualizationData::Ptr data);
+    void PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data);
 
 private:    
     void imu_callback(const sensor_msgs::ImuConstPtr& imu_msg) const; 

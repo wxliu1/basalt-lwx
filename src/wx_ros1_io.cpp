@@ -285,7 +285,7 @@ void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
   pose_msg.pose.orientation.z = data->T_w_i.unit_quaternion().z();
   pose_msg.pose.orientation.w = data->T_w_i.unit_quaternion().w();
 
-#ifdef _PUBLISH_VELOCITY_
+#if 0//def _PUBLISH_VELOCITY_
   // if(1) // compute velocity.
   {
     // static constexpr int DATA_CNT = 5;
@@ -297,7 +297,7 @@ void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
     static constexpr int64_t dt_ns = (46472013 - 0) * 1e9 +  643412768; // modified 2023-12-5.
 */
     // use member variable 'dt_ns_'
-    double fps_inv = 1 / fps_;
+    double fps_inv = 1.0 / fps_;
     int DATA_CNT = 0.2 * fps_;
 
     static int odometry_cnt = 0;
@@ -306,18 +306,20 @@ void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
     static double period_distance = 0.0;
     static Vector2d last_pose(0, 0);
 
-    static int64_t last_ns = 0;
-    static double last_velocity = 0.0;
+    // static int64_t last_ns = 0;
+    // static double last_velocity = 0.0;
+    // static double last_period_velocity = 0.0;
 
     if(t_ns == 0)
     {
        t_ns = data->t_ns - fps_inv * 1e9; 
     }
 
-    if(last_ns == 0)
-    {
-       last_ns = data->t_ns - fps_inv * 1e9; 
-    }
+    // if(last_ns == 0)
+    // {
+    //    last_ns = data->t_ns - fps_inv * 1e9; 
+    //   //  std::cout << "fps_inv:" << fps_inv << " data->t_ns=" << data->t_ns << " last_ns=" << last_ns << std::endl;
+    // }
 
     odometry_cnt++;
     if(odometry_cnt == 1)
@@ -334,26 +336,34 @@ void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
     curr_pose.x() = data->T_w_i.translation().x();
     curr_pose.y() = data->T_w_i.translation().y();
     double delta_distance = (curr_pose - last_pose).norm();
-    
-    double frame_delta_s = (data->t_ns - last_ns) * 1.0 * (1e-9); 
+   /*     
+    double frame_delta_s = (data->t_ns - last_ns) * 1.0 * (1e-9);
+    // std::cout << " data->t_ns=" << data->t_ns << " last_ns=" << last_ns << std::endl;
     double curr_velocity = delta_distance / frame_delta_s;
+    std::cout<< "  vel:" << curr_velocity << " delta_distance=" << delta_distance << " frame_delta_s=" << frame_delta_s << std::endl;
     if(last_velocity < 1e-3)
     {
-      curr_velocity = last_velocity;
+      // curr_velocity = last_velocity;
+      last_velocity = curr_velocity;
     }
+    
     double accelerated_velocity = (curr_velocity - last_velocity) / frame_delta_s;
+    std::cout << "instantaneous - " << "prev vel:" << last_velocity << "  vel:" << curr_velocity << "  acc:" << accelerated_velocity << std::endl;
     if(accelerated_velocity > 1.2 || accelerated_velocity < -1.35 || curr_velocity > (200 / 9)) // 80km/h
     {
+      std::cout << "velocity reset.\n";
       curr_velocity = last_velocity;
       delta_distance = last_velocity * frame_delta_s;
     }
-
+    // std::cout <<"  vel:" << curr_velocity << "  acc:" << accelerated_velocity << std::endl;
+*/
     period_distance += delta_distance;
     total_distance += delta_distance;
+    // std::cout << " delta_distance=" << delta_distance << "  period_distance=" << period_distance << std::endl;
 
     last_pose = curr_pose;
-    last_ns = data->t_ns;
-    last_velocity = curr_velocity;
+    // last_ns = data->t_ns;
+    // last_velocity = curr_velocity;
 
     if(odometry_cnt == 0)
     {
@@ -371,12 +381,35 @@ void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
         double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9); 
 
         odom_msg.velocity = period_distance / delta_s;
+/*        
+        double curr_period_velocity = period_distance / delta_s;
+        std::cout << "prev vel:" << last_period_velocity << "  vel:" << curr_period_velocity 
+          << "  period_distance:" << period_distance << "  delta_s:" << delta_s << std::endl;
+        if(last_period_velocity < 1e-3)
+        {
+          last_period_velocity = curr_period_velocity;
+        }
+        double period_accelerated_velocity = (curr_period_velocity - last_period_velocity) / delta_s;
+        std::cout << "prev vel:" << last_period_velocity << "  vel:" << curr_period_velocity << "  acc:" << period_accelerated_velocity << std::endl;
+        if(period_accelerated_velocity > 1.2 || period_accelerated_velocity < -1.35 || curr_period_velocity > (200 / 9)) // 80km/h
+        {
+          std::cout << "reset velocity\n";
+          curr_period_velocity = last_period_velocity;
+          period_distance = last_period_velocity * delta_s;
+        }
+
+        last_period_velocity = curr_period_velocity;
+
+        odom_msg.velocity = curr_period_velocity;
+*/
         odom_msg.delta_time = delta_s;
         odom_msg.period_odom = period_distance;
-        odom_msg.total_odom = total_distance;
+        odom_msg.total_odom = total_distance; // TODO:
 
         // publish velocity, period odom and total odom.
         pub_my_odom_.publish(odom_msg);
+
+        // std::cout << "confidence : " << data->bias_accel.transpose() << std::endl; // for test.
       }
 
       t_ns = data->t_ns;
@@ -384,6 +417,10 @@ void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
 
   }
 
+#endif
+
+#ifdef _PUBLISH_VELOCITY_
+  PublishMyOdom(data);
 #endif
 
   if (pub_odom_.getNumSubscribers() > 0)
@@ -411,6 +448,158 @@ void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
   // std::cout << " postion: " << pose_msg.pose.position.x << ", " 
   //   << pose_msg.pose.position.y << ", " << pose_msg.pose.position.z << std::endl;
 
+}
+
+void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data)
+{
+//#if 1//def _PUBLISH_VELOCITY_
+  // if(1) // compute velocity.
+
+  // use member variable 'dt_ns_'
+  double fps_inv = 1.0 / fps_;
+  // int DATA_CNT = 0.2 * fps_;
+
+  // static int odometry_cnt = 0;
+  static int64_t t_ns = 0;
+  static double total_distance = 0.0;
+  static double period_distance = 0.0;
+  static Vector2d last_pose(0, 0);
+  static double prev_velocity = 0.0;
+  static double total_odom = 0.0;
+#ifdef _ONE_SECOND_FILTER
+  static constexpr int ELEM_CNT = 5;
+  static double array_period_odom[ELEM_CNT] = { 0 }; 
+  static double array_delta_s[ELEM_CNT] = { 0 };
+  static int keep_count = 0; 
+#endif
+
+  if(t_ns == 0)
+  {
+      t_ns = data->t_ns - fps_inv * 1e9; 
+  }
+
+  Vector2d curr_pose;
+  curr_pose.x() = data->T_w_i.translation().x();
+  curr_pose.y() = data->T_w_i.translation().y();
+  double delta_distance = (curr_pose - last_pose).norm();
+
+  period_distance += delta_distance;
+  total_distance += delta_distance;
+  // std::cout << " delta_distance=" << delta_distance << "  period_distance=" << period_distance << std::endl;
+
+  last_pose = curr_pose;
+
+  double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9); 
+  
+  // if(odometry_cnt == 0)
+  // if(fabs(delta_s - 0.2) < 0.02) // 20ms
+  if(delta_s > 0.18) // 20ms
+  {
+    double curr_velocity = 0.0;
+    // std::cout << "delta_s:" << delta_s << std::endl;
+#ifdef _ONE_SECOND_FILTER    
+    if(keep_count < ELEM_CNT)
+    {
+      array_period_odom[keep_count++] = period_distance;
+      array_delta_s[keep_count++] = delta_s;
+    }
+    else
+    {
+      int i = 0;
+      for(i = 0; i < ELEM_CNT - 1; i++)
+      {
+        array_period_odom[i] = array_period_odom[i + 1];
+        array_delta_s[i] = array_delta_s[i + 1];
+      }
+
+      array_period_odom[i] = period_distance;
+      array_delta_s[i] = delta_s;
+    }
+
+    if(1)
+    {
+      int i = 0;
+      double tmp_odom = 0.0;
+      double tmp_delta_s = 0.0;
+      for(i = 0; i < keep_count; i++)
+      {
+        tmp_odom += array_period_odom[i];
+        tmp_delta_s += array_delta_s[i];
+      }
+
+      curr_velocity = tmp_odom / tmp_delta_s;
+    }
+#else
+    curr_velocity = period_distance / delta_s;
+#endif
+
+    if(prev_velocity < 1e-3)
+    {
+      prev_velocity = curr_velocity;
+
+    }
+
+#ifdef _ONE_SECOND_FILTER 
+    double publish_velocity = curr_velocity;
+#else   
+    double publish_velocity = (prev_velocity + curr_velocity) / 2;
+#endif  
+
+    if(fabs(publish_velocity - prev_velocity) > 2) // 3 or 2 or other number ?
+    {
+      publish_velocity = prev_velocity;
+    }
+
+    prev_velocity = publish_velocity;
+
+
+    double period_odom = publish_velocity * delta_s;
+    total_odom += period_odom;
+
+    
+    if (pub_my_odom_.getNumSubscribers() > 0)
+    {
+      myodom::MyOdom odom_msg;
+      // odom_msg.header.stamp = rclcpp::Time(data->t_ns);
+      odom_msg.header.stamp = ros::Time((data->t_ns - dt_ns_) * 1.0 /1e9); // complementary timestamp
+      odom_msg.header.frame_id = "odom";
+
+      // double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9); 
+
+      odom_msg.velocity = publish_velocity;//period_distance / delta_s;
+      odom_msg.delta_time = delta_s;
+      // odom_msg.period_odom = period_distance;
+      odom_msg.period_odom = period_odom;
+      // odom_msg.total_odom = total_distance; // TODO:
+      odom_msg.total_odom = total_odom;
+
+      int nTrackedPoints = data->bias_accel.x();
+      int nOptFlowPatches = data->bias_accel.y();
+      int nUseImu = data->bias_accel.z();
+      if(nUseImu == 1 || nTrackedPoints <= 10 || nOptFlowPatches <= 10)
+      {
+        odom_msg.confidence_coefficient = 0;
+      }
+      else if(nTrackedPoints < 20)
+      {
+        odom_msg.confidence_coefficient = 0.5;
+      }
+      else
+      {
+        odom_msg.confidence_coefficient = 1.0;
+      }
+
+      // publish velocity, period odom and total odom.
+      pub_my_odom_.publish(odom_msg);
+
+      // std::cout << "confidence : " << data->bias_accel.transpose() << std::endl; // for test.
+    }
+
+    t_ns = data->t_ns;
+    period_distance = 0.0;
+  }
+
+// #endif
 }
 
 inline void CRos1IO::getcolor(float p, float np, float& r, float& g, float& b) {
