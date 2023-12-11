@@ -4,7 +4,7 @@ project(stereo3)
 
 add_definitions(-D_WX_TEST) # define '_WX_TEST' macro
 # add_compile_definitions(_OPEN_CV_SHOW_=1)
-add_compile_definitions(SHOW_FLOW_PATCHES)
+# add_compile_definitions(SHOW_FLOW_PATCHES)
 add_definitions(-DSHOW_TRACKED_POINTS)
 
 # if you want to use noise suppression, please open the two lines below.

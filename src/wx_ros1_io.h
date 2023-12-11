@@ -7,8 +7,9 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 
-
+#include <tbb/concurrent_queue.h>
 
 #include <cv_bridge/cv_bridge.h>
 
@@ -62,16 +63,18 @@ namespace mf = message_filters;
 class CRos1IO
 {
 public:    
-    CRos1IO(const ros::NodeHandle& pnh, bool use_imu, int fps, long dt_ns = 0);
+    CRos1IO(const ros::NodeHandle& pnh, bool use_imu, int fps, long dt_ns = 0) noexcept;
+    ~CRos1IO();
     void PublishPoints(basalt::VioVisualizationData::Ptr data);
     void PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data);
 
     void Reset();
     void PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data); // TODO: transfer timestamp of sampling.
     void PublishFeatureImage(basalt::VioVisualizationData::Ptr data);
-    void PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data);
+    void PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_publish = false);
 
-private:    
+private: 
+    void PublishMyOdomThread();
     void imu_callback(const sensor_msgs::ImuConstPtr& imu_msg) const; 
 
     void StereoCb(const sm::ImageConstPtr& image0_ptr,
@@ -149,6 +152,8 @@ public:
 private:
     ros::NodeHandle pnh_;
     // double dt_s_ { 0.0 }; // if dt_s_ equal to '0.0', it's mean our sensor is already timestamp synchronization with atp.
+    std::thread t_publish_myodom;
+    tbb::concurrent_bounded_queue<basalt::PoseVelBiasState<double>::Ptr> pvb_queue;
     long dt_ns_ { 0 };
     int fps_ { 50 };
     bool use_imu_ = false;
