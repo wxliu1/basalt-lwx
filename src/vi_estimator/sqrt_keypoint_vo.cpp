@@ -480,9 +480,9 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   } // for (size_t i = 0
 
   // 添加关键帧策略判断：如果当前帧cam0(左目) 观测到的3d点与未能观测到3d点的特征点数比值小于一定的阈值。
-  // vio_new_kf_keypoints_thresh默认为0.7，vio_min_frames_after_kf默认为1，
+  // vio_new_kf_keypoints_thresh默认为0.7，vio_min_frames_after_kf默认为5，
   // 当前帧cam0跟踪的点的个数与当前帧总的点的个数的比值如果小于0.7，
-  // 并且从上一个关键帧之后的帧的数量大于vio_min_frames_after_kf，则当前帧应该成为关键帧。
+  // 并且从上一个关键帧之后的帧的数量大于5，则当前帧应该成为关键帧。
   if (Scalar(connected0) / (connected0 + unconnected_obs0.size()) <
           Scalar(config.vio_new_kf_keypoints_thresh) &&
       frames_after_kf > config.vio_min_frames_after_kf)
@@ -666,7 +666,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   double xdiff = P.x();
   double ydiff = P.y();
   // double zdiff = P.z();
-  constexpr double dt_threshold = 5.0; // 5.0; // 1.0
+  constexpr double dt_threshold = 6.0;//5.0; // 5.0; // 1.0
   double norm = sqrt(xdiff * xdiff + ydiff * ydiff);
   //if(fabs(xdiff) > dt_threshold || fabs(ydiff) > dt_threshold) // neglect z axis
   if(norm > dt_threshold) // neglect z axis
@@ -748,6 +748,10 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   }
   // the end.
 #endif
+/*
+ * 2023-12-8
+ * comment this section, because i want to take some variables with out_state_queue like confidence coefficient 
+ * 
   if (out_state_queue) {
     // 取出当前帧的状态量（时间戳，位姿，速度，bg, ba）存入输出状态队列，用于在pangolin上的显示
     const PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
@@ -761,6 +765,10 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
 
     out_state_queue->push(data);
   }
+*/
+  // self-define these two variables by wxliu
+  int nTrackedPoints = 0;
+  int nOptFlowPatches = 0;
 
   if (out_vis_queue) {
     // 用于在pangonlin上显示追踪的特征点和光流patch
@@ -782,7 +790,36 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
     data->opt_flow_res = prev_opt_flow_res[last_state_t_ns];
 
     out_vis_queue->push(data);
+
+    // add two lines below to save results.
+    nTrackedPoints = data->projections[0].size();
+    nOptFlowPatches = data->opt_flow_res->observations[0].size();
   }
+
+  // out_state_queue move here 2023-12-8
+  if (out_state_queue) {
+    // 取出当前帧的状态量（时间戳，位姿，速度，bg, ba）存入输出状态队列，用于在pangolin上的显示
+    const PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
+
+    T_w_i_prev = p.getPose();// 2023-11-21 10:07
+
+    // put our confidence in it. 2023-12-8
+    Eigen::Vector3d bias_accel;
+    bias_accel.x() = nTrackedPoints;
+    bias_accel.y() = nOptFlowPatches;
+    bias_accel.z() = g_imu->UseImuPose()? 1: 0;
+    
+    // the end.
+
+    typename PoseVelBiasState<double>::Ptr data(new PoseVelBiasState<double>(
+        p.getT_ns(), p.getPose().template cast<double>(),
+        Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(),
+        // Eigen::Vector3d::Zero()));
+        bias_accel));
+
+    out_state_queue->push(data);
+  }
+  // the end.
 
   last_processed_t_ns = last_state_t_ns;
 

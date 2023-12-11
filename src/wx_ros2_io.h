@@ -7,6 +7,9 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
+
+#include <tbb/concurrent_queue.h>
 
 #include "rclcpp/type_adapter.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -87,7 +90,8 @@ namespace mf = message_filters;
 class CRos2IO : public rclcpp::Node
 {
 public:    
-    CRos2IO(bool use_imu, int fps, long dt_ns = 0);
+    CRos2IO(bool use_imu, int fps, long dt_ns = 0) noexcept;
+    ~CRos2IO();
     void PublishPoints(basalt::VioVisualizationData::Ptr data);
     void PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data);
     // void SetImu(bool bl);
@@ -96,8 +100,11 @@ public:
     //void PublishPoint(basalt::VioVisualizationData::Ptr data); // TODO: transfer timestamp of sampling.
     void PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data);
     void PublishFeatureImage(basalt::VioVisualizationData::Ptr data);
+    void PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_publish = false);
 
-private:    
+
+private:
+    void PublishMyOdomThread();
     void imu_callback(const sensor_msgs::msg::Imu::SharedPtr imu_msg) const; 
     //void imu_callback(const sensor_msgs::msg::Imu & msg); const
 
@@ -129,6 +136,8 @@ public:
     std::function<void(double t, const Vector3d &linearAcceleration, const Vector3d &angularVelocity)>inputIMU_;
 
 private:
+    std::thread t_publish_myodom;
+    tbb::concurrent_bounded_queue<basalt::PoseVelBiasState<double>::Ptr> pvb_queue;
     // double dt_s_ { 0.0 }; // if dt_s_ equal to '0.0', it's mean our sensor is already timestamp synchronization with atp.
     long dt_ns_ { 0 };
     int fps_ { 50 };
