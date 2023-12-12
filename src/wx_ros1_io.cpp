@@ -495,6 +495,7 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
     {
       if(fabs(publish_velocity - prev_velocity) > 2) // 3 or 2 or other number ?
       {
+        std::cout << " --- reset velocity.---\n";
         publish_velocity = prev_velocity;
         reset_velociy = true;
       }
@@ -573,6 +574,8 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
         confidence_coefficient = 0.0;
       }
 
+      odom_msg.confidence_coefficient = confidence_coefficient;
+      
       // publish velocity, period odom and total odom.
       pub_my_odom_.publish(odom_msg);
 
