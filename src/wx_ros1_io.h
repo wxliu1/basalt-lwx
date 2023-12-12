@@ -37,6 +37,8 @@
 
 #include <myodom/MyOdom.h>
 
+#include "wx_yaml_io.h"
+
 //#include <Eigen/Dense>
 
 using namespace std::chrono_literals;
@@ -62,8 +64,11 @@ namespace mf = message_filters;
 
 class CRos1IO
 {
-public:    
-    CRos1IO(const ros::NodeHandle& pnh, bool use_imu, int fps, long dt_ns = 0) noexcept;
+public: 
+    CRos1IO(const ros::NodeHandle& pnh, const TYamlIO &yaml) noexcept;
+    // CRos1IO(const ros::NodeHandle& pnh, bool use_imu, int fps, long dt_ns = 0) noexcept;
+    // CRos1IO(const ros::NodeHandle& pnh, bool use_imu, int fps, 
+    //     std::vector<int> vec_tracked_points, std::vector<double> vec_confidence_levels, long dt_ns = 0) noexcept;
     ~CRos1IO();
     void PublishPoints(basalt::VioVisualizationData::Ptr data);
     void PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data);
@@ -151,9 +156,10 @@ public:
 
 private:
     ros::NodeHandle pnh_;
-    // double dt_s_ { 0.0 }; // if dt_s_ equal to '0.0', it's mean our sensor is already timestamp synchronization with atp.
     std::thread t_publish_myodom;
     tbb::concurrent_bounded_queue<basalt::PoseVelBiasState<double>::Ptr> pvb_queue;
+    TYamlIO yaml_;
+    // double dt_s_ { 0.0 }; // if dt_s_ equal to '0.0', it's mean our sensor is already timestamp synchronization with atp.
     long dt_ns_ { 0 };
     int fps_ { 50 };
     bool use_imu_ = false;

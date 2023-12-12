@@ -19,20 +19,60 @@ extern basalt::OpticalFlowBase::Ptr opt_flow_ptr; // 2023-11-28.
 
 using namespace wx;
 
-CRos1IO::CRos1IO(const ros::NodeHandle& pnh, bool use_imu, int fps, long dt_ns) noexcept
+CRos1IO::CRos1IO(const ros::NodeHandle& pnh, const TYamlIO &yaml) noexcept
+// CRos1IO::CRos1IO(const ros::NodeHandle& pnh, bool use_imu, int fps, long dt_ns) noexcept
   : pnh_(pnh)
-  , fps_(fps)
-  , dt_ns_(dt_ns)
+  , yaml_(yaml)
+  , fps_(yaml_.fps)
+  , dt_ns_(yaml_.dt_ns)
   , sub_image0_(pnh_, "/image_left", 5)
   , sub_image1_(pnh_, "/image_right", 5)
   // , sub_image0_info_(this, "/image_left_info")
   // , sub_image1_info_(this, "/image_right_info")
   // , sync_stereo_(sub_image0_, sub_image1_, sub_image0_info_, sub_image1_info_, 10) // method 1
 {
+
+#ifdef _VALIDATE_CONFIG_FILE
+  std::cout << "CRos1IO---\n" << "calib_path=" << yaml_.cam_calib_path << std::endl
+    << "config_path=" << yaml_.config_path << std::endl
+    << "dt_ns = " << yaml_.dt_ns << std::endl;
+
+  int cnt = yaml_.vec_tracked_points.size();
+  std::string strConfidenceInterval = "tracked_points:[";
+  for(int i = 0; i < cnt; i++)
+  {
+    strConfidenceInterval += std::to_string(yaml_.vec_tracked_points[i]) + ",";
+    if(i == cnt - 1)
+    {
+      strConfidenceInterval[strConfidenceInterval.size() - 1] = ']';
+    }
+  }
+
+  std::cout << strConfidenceInterval << std::endl;
+
+  cnt = yaml_.vec_confidence_levels.size();
+  strConfidenceInterval = "confidence_levels:[";
+  for(int i = 0; i < cnt; i++)
+  {
+    strConfidenceInterval += std::to_string(yaml_.vec_confidence_levels[i]);
+    if(i == cnt - 1)
+    {
+      strConfidenceInterval[strConfidenceInterval.size() - 1] = ']';
+    }
+    else
+    {
+      strConfidenceInterval += ",";
+    }
+  }
+
+  std::cout << strConfidenceInterval << std::endl;
+  std::cout << "CRos1IO---THE END---\n";
+#endif
+
   // create work thread
   t_publish_myodom = std::thread(&CRos1IO::PublishMyOdomThread, this);
 
-  use_imu_ = use_imu;
+  use_imu_ = yaml_.use_imu;
   sync_stereo_.emplace(sub_image0_, sub_image1_, 5); // method 2
   sync_stereo_->registerCallback(&CRos1IO::StereoCb, this);
 
@@ -495,6 +535,7 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
       int nTrackedPoints = data->bias_accel.x();
       int nOptFlowPatches = data->bias_accel.y();
       int nUseImu = data->bias_accel.z();
+/*      
       if(nUseImu == 1 || nTrackedPoints <= 10 || nOptFlowPatches <= 10)
       {
         odom_msg.confidence_coefficient = 0;
@@ -507,11 +548,35 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
       {
         odom_msg.confidence_coefficient = 1.0;
       }
+*/
+      double confidence_coefficient = 0.0;
+      int nSize = yaml_.vec_tracked_points.size();
+      
+      if(nTrackedPoints > yaml_.vec_tracked_points[nSize - 1])
+      {
+        confidence_coefficient = 1.0;
+      }
+      else
+      {
+        for(int i = 0; i < nSize; i++)
+        {
+          if(nTrackedPoints <= yaml_.vec_tracked_points[i])
+          {
+            confidence_coefficient = yaml_.vec_confidence_levels[i];
+            break ;
+          }
+        }
+      }
+
+      if(nUseImu == 1)
+      {
+        confidence_coefficient = 0.0;
+      }
 
       // publish velocity, period odom and total odom.
       pub_my_odom_.publish(odom_msg);
 
-      // std::cout << "confidence : " << data->bias_accel.transpose() << std::endl; // for test.
+      std::cout << "confidence : " << data->bias_accel.transpose() << "  confidence coefficient:" << confidence_coefficient << std::endl; // for test.
     }
 
     t_ns = data->t_ns;

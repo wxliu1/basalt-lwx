@@ -8,7 +8,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <unistd.h>
-
+#include <basalt/utils/assert.h>
 
 using namespace wx;
 
@@ -99,7 +99,17 @@ void TYamlIO::ReadConfiguration()
 
     //imu_.setExtrinsic(RIC[0], TIC[0]);
 
-    
+    vec_tracked_points = config["confidence_interval"]["tracked_points"].as<std::vector<int>>();
+    vec_confidence_levels = config["confidence_interval"]["confidence_levels"].as<std::vector<double>>();
+/*
+ * // no use in relase mode.    
+    assert(vec_tracked_points.size() > 0);
+    assert(vec_tracked_points.size() == vec_confidence_levels.size());
+ */
+
+    BASALT_ASSERT(vec_tracked_points.size() > 0);
+    BASALT_ASSERT(vec_tracked_points.size() == vec_confidence_levels.size());
+
   }
 
 }

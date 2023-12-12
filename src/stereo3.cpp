@@ -215,6 +215,38 @@ int main(int argc, char** argv) {
   std::cout << "calib_path=" << yaml.cam_calib_path << std::endl
     << "config_path=" << yaml.config_path << std::endl
     << "dt_ns = " << yaml.dt_ns << std::endl;
+
+  int cnt = yaml.vec_tracked_points.size();
+  std::string strConfidenceInterval = "tracked_points:[";
+  for(int i = 0; i < cnt; i++)
+  {
+    strConfidenceInterval += std::to_string(yaml.vec_tracked_points[i]) + ",";
+    if(i == cnt - 1)
+    {
+      strConfidenceInterval[strConfidenceInterval.size() - 1] = ']';
+    }
+  }
+
+  std::cout << strConfidenceInterval << std::endl;
+
+  cnt = yaml.vec_confidence_levels.size();
+  strConfidenceInterval = "confidence_levels:[";
+  for(int i = 0; i < cnt; i++)
+  {
+    strConfidenceInterval += std::to_string(yaml.vec_confidence_levels[i]);
+    if(i == cnt - 1)
+    {
+      strConfidenceInterval[strConfidenceInterval.size() - 1] = ']';
+    }
+    else
+    {
+      strConfidenceInterval += ",";
+    }
+  }
+
+  std::cout << strConfidenceInterval << std::endl;
+
+
   // the end.
 
   // 2023-11-13
@@ -316,7 +348,9 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "streo3_node");  // node name
   ros::MultiThreadedSpinner spinner(6);  // use 6 threads
 
-  wx::CRos1IO node{ros::NodeHandle{"~"}, yaml.use_imu, yaml.fps, yaml.dt_ns};
+  // wx::CRos1IO node{ros::NodeHandle{"~"}, yaml.use_imu, yaml.fps, yaml.vec_tracked_points, yaml.vec_confidence_levels, yaml.dt_ns};
+  // wx::CRos1IO node(ros::NodeHandle{"~"}, yaml); // it's ok.
+  wx::CRos1IO node {ros::NodeHandle{"~"}, yaml };
 
   node.inputIMU_ = std::bind(&ImuProcess::inputIMU, &imu, std::placeholders::_1, 
     std::placeholders::_2, std::placeholders::_3);

@@ -35,6 +35,8 @@ struct TYamlIO
     std::vector<Eigen::Vector3d> TIC;
     long dt_ns { 0 }; // if dt_s_ equal to 0, it's mean our sensor is already timestamp synchronization with atp.
     int fps { 50 };
+    std::vector<int> vec_tracked_points;
+    std::vector<double> vec_confidence_levels;
 
     void ReadConfiguration();
 #ifdef _NEED_WRITE_YAML    
