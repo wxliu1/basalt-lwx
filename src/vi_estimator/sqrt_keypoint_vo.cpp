@@ -1668,6 +1668,8 @@ bool SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from '
     }
   }
 
+  // std::cout << "num_it = " << it << std::endl;
+
   stats.add("optimize", timer_total.elapsed()).format("ms");
   stats.add("num_it", it).format("count");
   stats.add("num_it_rejected", it_rejected).format("count");

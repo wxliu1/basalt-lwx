@@ -110,6 +110,8 @@ class PatchOpticalFlow : public OpticalFlowBase {
   }
   // the end. 
 
+  virtual void SetZeroVelocity(bool bl) {}
+
   void processingLoop() {
     OpticalFlowInput::Ptr input_ptr;
 

@@ -17,9 +17,9 @@ extern basalt::OpticalFlowBase::Ptr opt_flow_ptr; // 2023-11-28.
 
 // #define _FILTER_IN_SECONDS_
 // #define _VELOCITY_FILTER_
-#define _MULTI_VELOCITY_FILTER_
+// #define _MULTI_VELOCITY_FILTER_
 
-// #define _REMOVE_OUTLIER_FILTER_
+#define _REMOVE_OUTLIER_FILTER_
 
 using namespace wx;
 
@@ -457,9 +457,9 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
 #endif
 
 #ifdef _REMOVE_OUTLIER_FILTER_
-  static constexpr int ELEM_CNT = 5; // 6
+  static constexpr int ELEM_CNT = 8;
   static double array_velocity[ELEM_CNT] = { 0 }; 
-  static constexpr double array_weight[ELEM_CNT] = {0.0, 0.0, 0.1, 0.2, 0.3};//, 0.4 };
+  static constexpr double array_weight[ELEM_CNT] = {0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.2 };
   static int keep_count = 0;
 #endif
 
@@ -487,6 +487,8 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
   {
     double curr_velocity = 0.0;
     // std::cout << "delta_s:" << delta_s << std::endl;
+    //=====================orginal============================
+    /*
 #ifdef _FILTER_IN_SECONDS_    
     if(keep_count < ELEM_CNT)
     {
@@ -522,6 +524,8 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
 
 #elif defined _MULTI_VELOCITY_FILTER_
 
+
+/*
   if(keep_count < ELEM_CNT)
   {
     array_velocity[keep_count++] = period_distance / delta_s;
@@ -558,6 +562,7 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
   if(keep_count < ELEM_CNT)
   {
     array_velocity[keep_count++] = period_distance / delta_s;
+    
   }
   else
   {
@@ -570,34 +575,31 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
     array_velocity[i] = period_distance  / delta_s;
   }
 
+curr_velocity = array_velocity[keep_count-1];
   //-
-  if(keep_count < ELEM_CNT)
-  {
-    for(int i = 0; i < keep_count; i++)
-    {
-      curr_velocity += array_velocity[i];
-    }
+  // if(keep_count < ELEM_CNT)
+  // {
+  //   for(int i = 0; i < keep_count; i++)
+  //   {
+  //     curr_velocity += array_velocity[i];
+  //   }
 
-    curr_velocity = curr_velocity / keep_count;
-  }
-  else
-  {
-/*    for(int i = 0; i < keep_count; i++)
-    {
-      curr_velocity += array_velocity[i] * array_weight[i];
-    }
-*/  
-    int N = ELEM_CNT;
-    curr_velocity = (-array_velocity[N - 5] + 4.0 * array_velocity[N - 4] - 6.0 * array_velocity[N - 3] +
-      4.0 * array_velocity[N - 2] + 69.0 * array_velocity[N - 1]) / 70.0;
-  }
+  //   curr_velocity = curr_velocity / keep_count;
+  // }
+  // else
+  // {
+  //   for(int i = 0; i < keep_count; i++)
+  //   {
+  //     curr_velocity += array_velocity[i] * array_weight[i];
+  //   }
+  // }
 
 #else
     curr_velocity = period_distance / delta_s;
 #endif
 
 
-    if(prev_velocity < 1e-6)
+    if(prev_velocity < 1e-3)
     {
       prev_velocity = curr_velocity;
 
@@ -628,10 +630,10 @@ double publish_velocity = curr_velocity;
   // if(fabs(publish_velocity - prev_velocity) > 2) // 3 or 2 or other number ?
   if(fabs(publish_velocity - prev_velocity) > 0.5) // 3 or 2 or other number ?
   {
-    // std::cout << " --- reset count:" << (int)reset_cnt << " prev_v:" << prev_velocity << " curr_v:" << publish_velocity << std::endl;
+    std::cout << " --- reset count:" << (int)reset_cnt << " prev_v:" << prev_velocity << " curr_v:" << publish_velocity << std::endl;
     if(reset_cnt < 3)
     {
-      // std::cout << " --- reset velocity.---\n"; 
+      std::cout << " --- reset velocity.---\n"; 
       publish_velocity = prev_velocity * 0.5 + publish_velocity * 0.5;
       reset_cnt++;
       // if(keep_count >= 1)
@@ -667,7 +669,6 @@ double publish_velocity = curr_velocity;
   }
 
 #elif defined _REMOVE_OUTLIER_FILTER_
-/*
   if(fabs(publish_velocity - prev_velocity) > 0.5)
   {
     // if(keep_count < ELEM_CNT)
@@ -687,13 +688,18 @@ double publish_velocity = curr_velocity;
 
       double acc_average = (acc_vel[1] + acc_vel[2] + acc_vel[3]) / 3;
 
-      if(acc_average > 0.5)  acc_average = 0;
-      else if (acc_average < -0.5)  acc_average = -0;
+      // if(acc_average > 0.5)  acc_average = 0;
+      // else if (acc_average < -0.5)  acc_average = -0;
+      if(acc_average > 0.5 || acc_average < -0.5)  
+          for(int i = 0; i < keep_count; i++)
+          {  
+            acc_average = array_velocity[i] * array_weight[i];
+          }
 
       publish_velocity = prev_velocity + acc_average;
     }
   }
-*/
+
 
 #else
 
@@ -720,7 +726,57 @@ double publish_velocity = curr_velocity;
     }
 
 #endif
-    
+*/
+    //==================zd_add====================================
+
+double publish_velocity;// = curr_velocity;
+  if(keep_count <= ELEM_CNT) //!
+  {
+    array_velocity[keep_count++] = period_distance / delta_s;
+  }
+  else
+  {
+    int i = 0;
+    for(i = 0; i <= 6; i++)
+    {
+      array_velocity[i] = array_velocity[i + 1]; // 8 velocity values
+    }
+
+    // array_velocity[i] = period_distance  / delta_s; // !!!
+    array_velocity[7] = period_distance  / delta_s;
+  }
+
+    double acc_vel[7] = { 0 }; // 7 acceleration values
+    for(int i = 0; i < 7; i++)
+    {
+      if(i==6) acc_vel[i] = array_velocity[i+1] - array_velocity[i];
+      else  acc_vel[i] = (array_velocity[i+2] - array_velocity[i]) / 2;
+    }
+
+    for(int i=0 ; i < ELEM_CNT; i++)
+    {
+      publish_velocity += array_velocity[i] * array_weight[i]; // 8 weighted velocity value
+    }
+    if(fabs(acc_vel[6]) + fabs(acc_vel[5]) > 0.6) //  the last two values are too intense
+    {
+      bubble_sort(acc_vel, 7); // 7 sorted acceleration values
+      double acc_average = (acc_vel[2] + acc_vel[3] + acc_vel[4]) / 3; // the mean value of three middle values
+      std::vector<double> new_acc(0);	// vector for accelerations which isn't too intense
+	    for(double acc: acc_vel)  if(fabs(acc)<0.25)  new_acc.push_back(acc);
+      if(new_acc.size()>0)
+      {
+        int sum = 0;
+        for_each(std::begin(new_acc), std::end(new_acc), [&sum](auto new_acc) {sum += new_acc; });
+        acc_average = sum / new_acc.size();
+        publish_velocity += acc_average;
+        // std::cout<<"trigger!   ";
+      }else
+      {
+        publish_velocity += acc_average;//prev_velocity + acc_average;
+      }
+    }
+
+    //==========================================================
     prev_velocity = publish_velocity;
 
     double period_odom = publish_velocity * delta_s;
@@ -734,17 +790,7 @@ double publish_velocity = curr_velocity;
       odom_msg.header.stamp = ros::Time((data->t_ns - dt_ns_) * 1.0 /1e9); // complementary timestamp
       odom_msg.header.frame_id = "odom";
 
-      // double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9);
-
-      if(publish_velocity < 0.05)
-      {
-        zeroVelocity_(true);
-        publish_velocity = 0.00;
-      }
-      else
-      {
-        zeroVelocity_(false);
-      }
+      // double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9); 
 
       odom_msg.velocity = publish_velocity;//period_distance / delta_s;
       odom_msg.delta_time = delta_s;
@@ -781,8 +827,7 @@ double publish_velocity = curr_velocity;
       {
         for(int i = 0; i < nSize; i++)
         {
-          // if(nTrackedPoints <= yaml_.vec_tracked_points[i])
-          if(nTrackedPoints <= yaml_.vec_tracked_points[i] && publish_velocity >= 0.05) // if velociy is 0, tracked points is fewer than moving 2023-12-15
+          if(nTrackedPoints <= yaml_.vec_tracked_points[i])
           {
             confidence_coefficient = yaml_.vec_confidence_levels[i];
             break ;

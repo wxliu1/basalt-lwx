@@ -12,9 +12,10 @@ use_imu: true
 use_double: true
 dt_ns: 0
 fps: 50
+coefficient: 1.02
 confidence_interval: 
-   tracked_points: [10, 20, 40]
-   confidence_levels: [0.0, 0.5, 0.8]
+   tracked_points: [40]
+   confidence_levels: [0.0]
 body_T_cam0: 
    rows: 4
    cols: 4

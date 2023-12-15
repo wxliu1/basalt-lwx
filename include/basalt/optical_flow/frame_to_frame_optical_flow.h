@@ -78,6 +78,9 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   FrameToFrameOpticalFlow(const VioConfig& config,
                           const basalt::Calibration<double>& calib)
       : t_ns(-1), frame_counter(0), last_keypoint_id(0), config(config) {
+    
+    grid_size_ = config.optical_flow_detection_grid_size;
+    max_iterations_ = config.optical_flow_max_iterations;
 
     // 设置输入队列大小: 输入队列设置容量  
     input_queue.set_capacity(10);
@@ -118,6 +121,28 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     // reset_mutex.unlock();
   }
   // the end.
+
+  virtual void SetZeroVelocity(bool bl) {
+    
+    if(isZeroVelocity_ != bl)
+    {
+      isZeroVelocity_ = bl;
+      if(isZeroVelocity_)
+      {
+        // grid_size_ = config.optical_flow_detection_grid_size * 2;
+        max_iterations_ = config.optical_flow_max_iterations / 2;
+      }
+      else
+      {
+        // grid_size_ = config.optical_flow_detection_grid_size;
+        max_iterations_ = config.optical_flow_max_iterations;
+      }
+
+      // std::cout << "grid size: " << grid_size_ << std::endl;
+      std::cout << "max iterations: " << max_iterations_ << std::endl;
+    }
+
+  }
 
   void processingLoop() {
     OpticalFlowInput::Ptr input_ptr;
@@ -424,8 +449,10 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     bool patch_valid = true;
 
     // 指定循环次数，且patch合法
+    // int iteration = 0; // added this line for test 2023-12-15.
     for (int iteration = 0;
-         patch_valid && iteration < config.optical_flow_max_iterations;
+        //  patch_valid && iteration < config.optical_flow_max_iterations;
+         patch_valid && iteration < max_iterations_;
          iteration++) {
       typename PatchT::VectorP res;
 
@@ -458,6 +485,8 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       }
     }
 
+    // std::cout << "num_it = " << iteration << std::endl;
+
     return patch_valid;
   }
 
@@ -477,8 +506,12 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     // 每个cell的大小默认是50 ， 每个cell提取1个特征点
     // 检测特征点
     // 参数1.图像 参数2.输出特征点容器 参数3,制定cell大小 参数4,每个cell多少特征点 参数5.成功追踪的特征点传递进去
+/*
+ * comment 2023-12-15.
     detectKeypoints(pyramid->at(0).lvl(0), kd,
-                    config.optical_flow_detection_grid_size, 1, pts0);
+                    config.optical_flow_detection_grid_size, 1, pts0);                
+*/
+    detectKeypoints(pyramid->at(0).lvl(0), kd, grid_size_, 1, pts0);
 
     Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f> new_poses0,
         new_poses1;
@@ -587,6 +620,10 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   void SetReset(bool bl) { isReset_ =bl; }
   inline bool GetReset() { return isReset_;}
   // the end.
+
+  bool isZeroVelocity_ { false };
+  std::atomic<int> grid_size_ { 0 };
+  std::atomic<int> max_iterations_ { 0 };
 };
 
 }  // namespace basalt

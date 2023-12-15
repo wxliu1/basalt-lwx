@@ -236,7 +236,11 @@ endif()
 # SET(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb")
 # the end.
 
-
+# test gdb on release mode. 2023-12-13
+# SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall")
+# SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall -g -ggdb")
+# add_compile_options(-O0 -Wall -g -ggdb)
+# the end.
 
 # Set platform / compiler specific compile flags and checks
 if(APPLE)

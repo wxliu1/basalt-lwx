@@ -17,9 +17,9 @@ extern basalt::OpticalFlowBase::Ptr opt_flow_ptr; // 2023-11-28.
 
 // #define _FILTER_IN_SECONDS_
 // #define _VELOCITY_FILTER_
-#define _MULTI_VELOCITY_FILTER_
+// #define _MULTI_VELOCITY_FILTER_
 
-// #define _REMOVE_OUTLIER_FILTER_
+#define _REMOVE_OUTLIER_FILTER_
 
 using namespace wx;
 
@@ -457,9 +457,9 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
 #endif
 
 #ifdef _REMOVE_OUTLIER_FILTER_
-  static constexpr int ELEM_CNT = 5; // 6
+  static constexpr int ELEM_CNT = 6;
   static double array_velocity[ELEM_CNT] = { 0 }; 
-  static constexpr double array_weight[ELEM_CNT] = {0.0, 0.0, 0.1, 0.2, 0.3};//, 0.4 };
+  static constexpr double array_weight[ELEM_CNT] = {0.0, 0.0, 0.1, 0.2, 0.3, 0.4 };
   static int keep_count = 0;
 #endif
 
@@ -582,14 +582,10 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
   }
   else
   {
-/*    for(int i = 0; i < keep_count; i++)
+    for(int i = 0; i < keep_count; i++)
     {
       curr_velocity += array_velocity[i] * array_weight[i];
     }
-*/  
-    int N = ELEM_CNT;
-    curr_velocity = (-array_velocity[N - 5] + 4.0 * array_velocity[N - 4] - 6.0 * array_velocity[N - 3] +
-      4.0 * array_velocity[N - 2] + 69.0 * array_velocity[N - 1]) / 70.0;
   }
 
 #else
@@ -597,7 +593,7 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
 #endif
 
 
-    if(prev_velocity < 1e-6)
+    if(prev_velocity < 1e-3)
     {
       prev_velocity = curr_velocity;
 
@@ -628,10 +624,10 @@ double publish_velocity = curr_velocity;
   // if(fabs(publish_velocity - prev_velocity) > 2) // 3 or 2 or other number ?
   if(fabs(publish_velocity - prev_velocity) > 0.5) // 3 or 2 or other number ?
   {
-    // std::cout << " --- reset count:" << (int)reset_cnt << " prev_v:" << prev_velocity << " curr_v:" << publish_velocity << std::endl;
+    std::cout << " --- reset count:" << (int)reset_cnt << " prev_v:" << prev_velocity << " curr_v:" << publish_velocity << std::endl;
     if(reset_cnt < 3)
     {
-      // std::cout << " --- reset velocity.---\n"; 
+      std::cout << " --- reset velocity.---\n"; 
       publish_velocity = prev_velocity * 0.5 + publish_velocity * 0.5;
       reset_cnt++;
       // if(keep_count >= 1)
@@ -667,7 +663,6 @@ double publish_velocity = curr_velocity;
   }
 
 #elif defined _REMOVE_OUTLIER_FILTER_
-/*
   if(fabs(publish_velocity - prev_velocity) > 0.5)
   {
     // if(keep_count < ELEM_CNT)
@@ -693,7 +688,7 @@ double publish_velocity = curr_velocity;
       publish_velocity = prev_velocity + acc_average;
     }
   }
-*/
+
 
 #else
 
@@ -734,17 +729,7 @@ double publish_velocity = curr_velocity;
       odom_msg.header.stamp = ros::Time((data->t_ns - dt_ns_) * 1.0 /1e9); // complementary timestamp
       odom_msg.header.frame_id = "odom";
 
-      // double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9);
-
-      if(publish_velocity < 0.05)
-      {
-        zeroVelocity_(true);
-        publish_velocity = 0.00;
-      }
-      else
-      {
-        zeroVelocity_(false);
-      }
+      // double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9); 
 
       odom_msg.velocity = publish_velocity;//period_distance / delta_s;
       odom_msg.delta_time = delta_s;
@@ -781,8 +766,7 @@ double publish_velocity = curr_velocity;
       {
         for(int i = 0; i < nSize; i++)
         {
-          // if(nTrackedPoints <= yaml_.vec_tracked_points[i])
-          if(nTrackedPoints <= yaml_.vec_tracked_points[i] && publish_velocity >= 0.05) // if velociy is 0, tracked points is fewer than moving 2023-12-15
+          if(nTrackedPoints <= yaml_.vec_tracked_points[i])
           {
             confidence_coefficient = yaml_.vec_confidence_levels[i];
             break ;

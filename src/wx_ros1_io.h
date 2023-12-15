@@ -153,6 +153,7 @@ public:
     std::function<void(basalt::ImuData<double>::Ptr)> feedImu_;
     std::function<void(void)> stop_;
     std::function<void(double t, const Vector3d &linearAcceleration, const Vector3d &angularVelocity)>inputIMU_;
+    std::function<void(bool bl)> zeroVelocity_;
 
 private:
     ros::NodeHandle pnh_;

@@ -126,6 +126,24 @@ basalt::VioEstimatorBase::Ptr vio;
 ImuProcess* g_imu = nullptr;
 // the end.
 
+// bool g_isZeroVelocity = true;
+
+void zeroVelocity(bool bl)
+{
+  opt_flow_ptr->SetZeroVelocity(bl);
+
+  // if(bl != g_isZeroVelocity)
+  // {
+  //   g_isZeroVelocity = bl;
+  //   if(g_isZeroVelocity)
+  //   {
+  //     opt_flow_ptr->Reset();
+  //     vio->Reset();
+  //   }
+  // }
+
+}
+
 // 2023-11-10.
 void feedImage(basalt::OpticalFlowInput::Ptr data, ImuProcess* imu) 
 {
@@ -206,6 +224,9 @@ int main(int argc, char** argv) {
   // step 1: 命令行参数解析  
   CLI::App app{"App description"};
 */
+
+  // int *p = NULL;
+  // std::cout<<*p<<std::endl;
 
   sys_cfg_.ReadSystemCfg(); // 2023-11-17.
 
@@ -361,6 +382,7 @@ int main(int argc, char** argv) {
   node->feedImu_ = std::bind(&feedImu, std::placeholders::_1);
 #endif 
   node.stop_ = std::bind(&stop);
+  node.zeroVelocity_ = std::bind(&zeroVelocity, std::placeholders::_1);
 
   // the end.
 

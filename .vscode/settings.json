@@ -79,6 +79,20 @@
         "variant": "cpp",
         "*.ipp": "cpp",
         "*.inc": "cpp",
-        "hash_map": "cpp"
+        "hash_map": "cpp",
+        "alignedvector3": "cpp",
+        "core": "cpp",
+        "superlusupport": "cpp",
+        "adolcforward": "cpp",
+        "autodiff": "cpp",
+        "bvh": "cpp",
+        "eulerangles": "cpp",
+        "fft": "cpp",
+        "kroneckerproduct": "cpp",
+        "mprealsupport": "cpp",
+        "numericaldiff": "cpp",
+        "openglsupport": "cpp",
+        "specialfunctions": "cpp",
+        "splines": "cpp"
     }
 }
