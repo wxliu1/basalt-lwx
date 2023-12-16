@@ -40,6 +40,12 @@ CRos1IO::CRos1IO(const ros::NodeHandle& pnh, const TYamlIO &yaml) noexcept
   // , sync_stereo_(sub_image0_, sub_image1_, sub_image0_info_, sub_image1_info_, 10) // method 1
 {
 
+#ifdef _KF_
+// Kalman_Filter_Init(&kalman_filter_pt1, 0.001, 2, 25, 1);
+  Kalman_Filter_Init(&kalman_filter_pt1, 0.001, 2, 0, 1);
+#endif
+
+
 #ifdef _VALIDATE_CONFIG_FILE
   std::cout << "CRos1IO---\n" << "calib_path=" << yaml_.cam_calib_path << std::endl
     << "config_path=" << yaml_.config_path << std::endl
@@ -517,7 +523,12 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
   static unsigned char reset_cnt = 0;
   static std::vector<double> vec_new_vel;
 
-#endif  
+#endif 
+
+#ifdef _KF_
+  // Kalman_Filter_Init(&kalman_filter_pt1, 0.001, 2, 25, 1);
+  // float pt1_KMfilter = Kalman_Filter_Iterate(&kalman_filter_pt1, SenPt100Array[0].CalibValue);
+#endif
 
   if(t_ns == 0)
   {
@@ -877,6 +888,12 @@ double publish_velocity = curr_velocity;
 
 #endif
     
+    bool is_reliable = true;
+    if(fabs(publish_velocity - prev_velocity) >= 0.3)
+    {
+      is_reliable = false;
+    }
+
     prev_velocity = publish_velocity;
 
     double period_odom = publish_velocity * delta_s;
@@ -946,7 +963,8 @@ double publish_velocity = curr_velocity;
         }
       }
 
-      if(nUseImu == 1)
+      // if(nUseImu == 1)
+      if((nUseImu == 1) || (is_reliable == false))
       {
         confidence_coefficient = 0.0;
       }

@@ -39,6 +39,8 @@
 
 #include "wx_yaml_io.h"
 
+// #include "kalman_filter.h"
+
 //#include <Eigen/Dense>
 
 using namespace std::chrono_literals;
@@ -191,6 +193,17 @@ private:
     ros::Publisher pub_warped_img;
 
     ros::Publisher pub_my_odom_;
+
+    // Kalman_Filter_Struct kalman_filter_pt1;
+    /* =
+    {
+        .Q_ProcessNoise = 0.001,
+        .R_MeasureNoise = 0.1,
+        .estimate_value_init = 25,
+        .estimate_variance_init = 1,
+        .estimate_value_curr = 25,
+        .estimate_variance_curr = 1,
+    };*/
 
 /*
  * minimal publisher and subscriber

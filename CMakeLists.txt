@@ -424,6 +424,7 @@ add_executable(stereo3
   src/wx_yaml_io.cpp
   src/wx_system.cpp
   src/utility/utility.cpp
+  # src/kalman_filter.cpp
   # the end.
 )
 
