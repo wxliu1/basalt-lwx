@@ -19,11 +19,11 @@ extern basalt::OpticalFlowBase::Ptr opt_flow_ptr; // 2023-11-28.
 
 // #define _FILTER_IN_SECONDS_
 // #define _VELOCITY_FILTER_
-// #define _MULTI_VELOCITY_FILTER_
+#define _MULTI_VELOCITY_FILTER_
 
 // #define _REMOVE_OUTLIER_FILTER_
 
-#define _Linear_Fitted5_
+// #define _Linear_Fitted5_
 
 using namespace wx;
 
@@ -369,7 +369,7 @@ void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
   pose_msg.pose.orientation.w = data->T_w_i.unit_quaternion().w();
 
 #ifdef _PUBLISH_VELOCITY_
-#if 1
+#if 0
   PublishMyOdom(data, true);
 #else  
   pvb_queue.push(data);
@@ -476,6 +476,7 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
 
   // static int odometry_cnt = 0;
   static int64_t t_ns = 0;
+  static int64_t last_t_ns = 0;
   static double total_distance = 0.0;
   static double period_distance = 0.0;
   static Vector2d last_pose(0, 0);
@@ -505,21 +506,23 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
 #endif
 
 #ifdef _Linear_Fitted5_
-  static std::vector<double> vec_velocities;
-  static std::vector<double> vec_velocities2;
-  static std::vector<double> vec_velocities3;
-  static std::vector<double> vec_velocities4;
-  static std::vector<double> vec_velocities5;
-  double new_velocity = 0;
-  double new_velocity2 = 0;
-  double new_velocity3 = 0;
-  double new_velocity4 = 0;
+  static std::vector<double> vec_velocities[20];
   // static std::queue<double> q_velocities;
+
+  static constexpr int ELEM_CNT = 2;//4;
+  static double array_velocity[ELEM_CNT] = { 0 }; 
+  // static constexpr double array_weight[ELEM_CNT] = { 0.1, 0.2, 0.3, 0.4 };
+  static constexpr double array_weight[ELEM_CNT] = { 0.45, 0.55 };
+  static int keep_count = 0;
+  static unsigned char reset_cnt = 0;
+  static std::vector<double> vec_new_vel;
+
 #endif  
 
   if(t_ns == 0)
   {
-      t_ns = data->t_ns - fps_inv * 1e9; 
+      t_ns = data->t_ns - fps_inv * 1e9;
+      last_t_ns = data->t_ns - fps_inv * 1e9;
   }
 
   Vector2d curr_pose;
@@ -527,145 +530,34 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
   curr_pose.y() = data->T_w_i.translation().y();
   double delta_distance = (curr_pose - last_pose).norm();
 
+  double frame_delta_s = (data->t_ns - last_t_ns) * 1.0 * (1e-9);
+
   period_distance += delta_distance;
   total_distance += delta_distance;
   // std::cout << " delta_distance=" << delta_distance << "  period_distance=" << period_distance << std::endl;
 
   last_pose = curr_pose;
 
+  last_t_ns = data->t_ns;
+
   double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9); 
 
 #ifdef _Linear_Fitted5_
-  double new_vel = period_distance / delta_s;
-  new_vel = ClacFitted(vec_velocities, new_vel);
-  new_vel = ClacFitted(vec_velocities2, new_vel);
-  new_vel = ClacFitted(vec_velocities3, new_vel);
-  new_vel = ClacFitted(vec_velocities4, new_vel);
-  new_vel = ClacFitted(vec_velocities5, new_vel);
-  /*
-  if(vec_velocities.size() < 5)
-  // if(q_velocities.size() < 5)
+  // double new_vel = delta_distance / delta_s;
+  double new_vel = delta_distance / frame_delta_s;
+  // new_vel = ClacFitted(vec_velocities, new_vel);
+  // new_vel = ClacFitted(vec_velocities2, new_vel);
+  // new_vel = ClacFitted(vec_velocities3, new_vel);
+  // new_vel = ClacFitted(vec_velocities4, new_vel);
+  // new_vel = ClacFitted(vec_velocities5, new_vel);
+
+  for(int i = 0; i < 20; i++)
   {
-    vec_velocities.emplace_back(period_distance / delta_s);
-    // q_velocities.push(period_distance / delta_s);
-    new_velocity = period_distance / delta_s;
-  }
-  else
-  {
-    // q_velocities.pop();
-    // q_velocities.push(period_distance / delta_s);
-
-    for(int i = 0; i < 4; i++)
-    {
-      vec_velocities[i] = vec_velocities[i + 1];
-    }
-    vec_velocities[4] = period_distance / delta_s;
-
-    // for(auto vel : vec_velocities) std::cout << vel << " ";
-    // std::cout << std::endl;
-    std::vector<double> vec_tmp(vec_velocities);
-
-    std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
-    
-    new_velocity = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
+    new_vel = ClacFitted(vec_velocities[i], new_vel);
   }
 
-  if(1)
-  {
-    
-    if(vec_velocities2.size() < 5)
-    // if(q_velocities.size() < 5)
-    {
-      vec_velocities2.emplace_back(new_velocity);
-      // q_velocities.push(period_distance / delta_s);
-      new_velocity2 = new_velocity;
-    }
-    else
-    {
-      // q_velocities.pop();
-      // q_velocities.push(period_distance / delta_s);
-
-      for(int i = 0; i < 4; i++)
-      {
-        vec_velocities2[i] = vec_velocities2[i + 1];
-      }
-      vec_velocities2[4] = new_velocity;
-
-      // for(auto vel : vec_velocities) std::cout << vel << " ";
-      // std::cout << std::endl;
-      std::vector<double> vec_tmp(vec_velocities2);
-
-      std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
-      
-      new_velocity2 = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
-    }
-
-  }
-
-  if(1)
-  {
-    
-    if(vec_velocities3.size() < 5)
-    // if(q_velocities.size() < 5)
-    {
-      vec_velocities3.emplace_back(new_velocity2);
-      // q_velocities.push(period_distance / delta_s);
-      new_velocity3 = new_velocity2;
-    }
-    else
-    {
-      // q_velocities.pop();
-      // q_velocities.push(period_distance / delta_s);
-
-      for(int i = 0; i < 4; i++)
-      {
-        vec_velocities3[i] = vec_velocities3[i + 1];
-      }
-      vec_velocities3[4] = new_velocity2;
-
-      // for(auto vel : vec_velocities) std::cout << vel << " ";
-      // std::cout << std::endl;
-      std::vector<double> vec_tmp(vec_velocities3);
-
-      std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
-      
-      new_velocity3 = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
-    }
-
-  }
-
-  if(1)
-  {
-    
-    if(vec_velocities4.size() < 5)
-    // if(q_velocities.size() < 5)
-    {
-      vec_velocities4.emplace_back(new_velocity3);
-      // q_velocities.push(period_distance / delta_s);
-      new_velocity4 = new_velocity3;
-    }
-    else
-    {
-      // q_velocities.pop();
-      // q_velocities.push(period_distance / delta_s);
-
-      for(int i = 0; i < 4; i++)
-      {
-        vec_velocities4[i] = vec_velocities4[i + 1];
-      }
-      vec_velocities4[4] = new_velocity3;
-
-      // for(auto vel : vec_velocities) std::cout << vel << " ";
-      // std::cout << std::endl;
-      std::vector<double> vec_tmp(vec_velocities4);
-
-      std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
-      
-      new_velocity4 = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
-    }
-
-  }
-*/  
+  vec_new_vel.emplace_back(new_vel);
+  
   #endif
   
   // if(odometry_cnt == 0)
@@ -813,37 +705,49 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
   }
 */
 #elif defined _Linear_Fitted5_
-/*
-  if(vec_velocities.size() < 5)
-  // if(q_velocities.size() < 5)
-  {
-    vec_velocities.emplace_back(period_distance / delta_s);
-    // q_velocities.push(period_distance / delta_s);
-    curr_velocity = period_distance / delta_s;
-  }
-  else
-  {
-    // q_velocities.pop();
-    // q_velocities.push(period_distance / delta_s);
 
-    for(int i = 0; i < 4; i++)
-    {
-      vec_velocities[i] = vec_velocities[i + 1];
-    }
-    vec_velocities[4] = period_distance / delta_s;
-
-    // for(auto vel : vec_velocities) std::cout << vel << " ";
-    // std::cout << std::endl;
-    std::vector<double> vec_tmp(vec_velocities);
-
-    std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
-    
-    curr_velocity = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
-  }
-*/
     // curr_velocity = new_velocity2;
     // curr_velocity = new_velocity4;
-    curr_velocity = new_vel;
+
+    // curr_velocity = new_vel;
+    for(auto vel : vec_new_vel) curr_velocity += vel;
+    curr_velocity /= vec_new_vel.size();
+
+    vec_new_vel.clear();
+
+    if(keep_count < ELEM_CNT)
+    {
+      array_velocity[keep_count++] = curr_velocity;
+    }
+    else
+    {
+      int i = 0;
+      for(i = 0; i < ELEM_CNT - 1; i++)
+      {
+        array_velocity[i] = array_velocity[i + 1];
+      }
+
+      array_velocity[i] = curr_velocity;
+    }
+
+    if(keep_count < ELEM_CNT)
+    {
+      for(int i = 0; i < keep_count; i++)
+      {
+        curr_velocity += array_velocity[i];
+      }
+
+      curr_velocity = curr_velocity / keep_count;
+    }
+    else
+    {
+      curr_velocity = 0.0;
+      for(int i = 0; i < keep_count; i++)
+      {
+        curr_velocity += array_velocity[i] * array_weight[i];
+      }
+    }
+
 #else
     curr_velocity = period_distance / delta_s;
 #endif
