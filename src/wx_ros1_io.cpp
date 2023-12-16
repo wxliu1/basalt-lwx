@@ -9,6 +9,8 @@
 
 #include <basalt/io/dataset_io.h>
 
+#include <queue>
+
 extern basalt::OpticalFlowBase::Ptr opt_flow_ptr; // 2023-11-28.
 
 //#include <boost/circular_buffer.hpp>
@@ -17,9 +19,11 @@ extern basalt::OpticalFlowBase::Ptr opt_flow_ptr; // 2023-11-28.
 
 // #define _FILTER_IN_SECONDS_
 // #define _VELOCITY_FILTER_
-#define _MULTI_VELOCITY_FILTER_
+// #define _MULTI_VELOCITY_FILTER_
 
 // #define _REMOVE_OUTLIER_FILTER_
+
+#define _Linear_Fitted5_
 
 using namespace wx;
 
@@ -365,8 +369,8 @@ void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data)
   pose_msg.pose.orientation.w = data->T_w_i.unit_quaternion().w();
 
 #ifdef _PUBLISH_VELOCITY_
-#if 0
-  PublishMyOdom(data);
+#if 1
+  PublishMyOdom(data, true);
 #else  
   pvb_queue.push(data);
 #endif  
@@ -423,6 +427,43 @@ void bubble_sort(double* arr, int length)
     }
 }
 
+bool sortByY(const double &p1, const double &p2)
+{
+	return p1 < p2;//升序排列  
+}
+
+double ClacFitted(std::vector<double> &vec, double vel)
+{
+  double new_velocity;
+  if(vec.size() < 5)
+  // if(q_velocities.size() < 5)
+  {
+    vec.emplace_back(vel);
+    // q_velocities.push(period_distance / delta_s);
+    new_velocity = vel;
+  }
+  else
+  {
+    // q_velocities.pop();
+    // q_velocities.push(period_distance / delta_s);
+
+    for(int i = 0; i < 4; i++)
+    {
+      vec[i] = vec[i + 1];
+    }
+    vec[4] = vel;
+
+    // for(auto vel : vec) std::cout << vel << " ";
+    // std::cout << std::endl;
+    std::vector<double> vec_tmp(vec);
+
+    std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
+    
+    new_velocity = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
+  }
+
+  return new_velocity;
+}
 
 void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_publish/* = false*/)
 {
@@ -463,6 +504,19 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
   static int keep_count = 0;
 #endif
 
+#ifdef _Linear_Fitted5_
+  static std::vector<double> vec_velocities;
+  static std::vector<double> vec_velocities2;
+  static std::vector<double> vec_velocities3;
+  static std::vector<double> vec_velocities4;
+  static std::vector<double> vec_velocities5;
+  double new_velocity = 0;
+  double new_velocity2 = 0;
+  double new_velocity3 = 0;
+  double new_velocity4 = 0;
+  // static std::queue<double> q_velocities;
+#endif  
+
   if(t_ns == 0)
   {
       t_ns = data->t_ns - fps_inv * 1e9; 
@@ -480,6 +534,139 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
   last_pose = curr_pose;
 
   double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9); 
+
+#ifdef _Linear_Fitted5_
+  double new_vel = period_distance / delta_s;
+  new_vel = ClacFitted(vec_velocities, new_vel);
+  new_vel = ClacFitted(vec_velocities2, new_vel);
+  new_vel = ClacFitted(vec_velocities3, new_vel);
+  new_vel = ClacFitted(vec_velocities4, new_vel);
+  new_vel = ClacFitted(vec_velocities5, new_vel);
+  /*
+  if(vec_velocities.size() < 5)
+  // if(q_velocities.size() < 5)
+  {
+    vec_velocities.emplace_back(period_distance / delta_s);
+    // q_velocities.push(period_distance / delta_s);
+    new_velocity = period_distance / delta_s;
+  }
+  else
+  {
+    // q_velocities.pop();
+    // q_velocities.push(period_distance / delta_s);
+
+    for(int i = 0; i < 4; i++)
+    {
+      vec_velocities[i] = vec_velocities[i + 1];
+    }
+    vec_velocities[4] = period_distance / delta_s;
+
+    // for(auto vel : vec_velocities) std::cout << vel << " ";
+    // std::cout << std::endl;
+    std::vector<double> vec_tmp(vec_velocities);
+
+    std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
+    
+    new_velocity = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
+  }
+
+  if(1)
+  {
+    
+    if(vec_velocities2.size() < 5)
+    // if(q_velocities.size() < 5)
+    {
+      vec_velocities2.emplace_back(new_velocity);
+      // q_velocities.push(period_distance / delta_s);
+      new_velocity2 = new_velocity;
+    }
+    else
+    {
+      // q_velocities.pop();
+      // q_velocities.push(period_distance / delta_s);
+
+      for(int i = 0; i < 4; i++)
+      {
+        vec_velocities2[i] = vec_velocities2[i + 1];
+      }
+      vec_velocities2[4] = new_velocity;
+
+      // for(auto vel : vec_velocities) std::cout << vel << " ";
+      // std::cout << std::endl;
+      std::vector<double> vec_tmp(vec_velocities2);
+
+      std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
+      
+      new_velocity2 = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
+    }
+
+  }
+
+  if(1)
+  {
+    
+    if(vec_velocities3.size() < 5)
+    // if(q_velocities.size() < 5)
+    {
+      vec_velocities3.emplace_back(new_velocity2);
+      // q_velocities.push(period_distance / delta_s);
+      new_velocity3 = new_velocity2;
+    }
+    else
+    {
+      // q_velocities.pop();
+      // q_velocities.push(period_distance / delta_s);
+
+      for(int i = 0; i < 4; i++)
+      {
+        vec_velocities3[i] = vec_velocities3[i + 1];
+      }
+      vec_velocities3[4] = new_velocity2;
+
+      // for(auto vel : vec_velocities) std::cout << vel << " ";
+      // std::cout << std::endl;
+      std::vector<double> vec_tmp(vec_velocities3);
+
+      std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
+      
+      new_velocity3 = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
+    }
+
+  }
+
+  if(1)
+  {
+    
+    if(vec_velocities4.size() < 5)
+    // if(q_velocities.size() < 5)
+    {
+      vec_velocities4.emplace_back(new_velocity3);
+      // q_velocities.push(period_distance / delta_s);
+      new_velocity4 = new_velocity3;
+    }
+    else
+    {
+      // q_velocities.pop();
+      // q_velocities.push(period_distance / delta_s);
+
+      for(int i = 0; i < 4; i++)
+      {
+        vec_velocities4[i] = vec_velocities4[i + 1];
+      }
+      vec_velocities4[4] = new_velocity3;
+
+      // for(auto vel : vec_velocities) std::cout << vel << " ";
+      // std::cout << std::endl;
+      std::vector<double> vec_tmp(vec_velocities4);
+
+      std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
+      
+      new_velocity4 = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
+    }
+
+  }
+*/  
+  #endif
   
   // if(odometry_cnt == 0)
   // if(delta_s > 0.18) // 20ms
@@ -555,6 +742,7 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
   }
 
 #elif defined _REMOVE_OUTLIER_FILTER_
+/*
   if(keep_count < ELEM_CNT)
   {
     array_velocity[keep_count++] = period_distance / delta_s;
@@ -578,20 +766,84 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_
       curr_velocity += array_velocity[i];
     }
 
-    curr_velocity = curr_velocity / keep_count;
+    // curr_velocity = curr_velocity / keep_count;
+    curr_velocity = period_distance / delta_s;
   }
   else
   {
-/*    for(int i = 0; i < keep_count; i++)
-    {
-      curr_velocity += array_velocity[i] * array_weight[i];
-    }
-*/  
-    int N = ELEM_CNT;
-    curr_velocity = (-array_velocity[N - 5] + 4.0 * array_velocity[N - 4] - 6.0 * array_velocity[N - 3] +
-      4.0 * array_velocity[N - 2] + 69.0 * array_velocity[N - 1]) / 70.0;
-  }
+    // for(int i = 0; i < keep_count; i++)
+    // {
+    //   curr_velocity += array_velocity[i] * array_weight[i];
+    // }
+  
+    // int N = ELEM_CNT;
+    // curr_velocity = (-array_velocity[N - 5] + 4.0 * array_velocity[N - 4] - 6.0 * array_velocity[N - 3] +
+    //   4.0 * array_velocity[N - 2] + 69.0 * array_velocity[N - 1]) / 70.0;
 
+    bubble_sort(array_velocity, 5);
+    curr_velocity = (array_velocity[1] + array_velocity[2] + array_velocity[3]) / 3;
+  }
+*/
+/* 
+  if(vec_velocities.size() < 5)
+  // if(q_velocities.size() < 5)
+  {
+    vec_velocities.emplace_back(period_distance / delta_s);
+    // q_velocities.push(period_distance / delta_s);
+    curr_velocity = period_distance / delta_s;
+  }
+  else
+  {
+    // q_velocities.pop();
+    // q_velocities.push(period_distance / delta_s);
+
+    for(int i = 0; i < 4; i++)
+    {
+      vec_velocities[i] = vec_velocities[i + 1];
+    }
+    vec_velocities[4] = period_distance / delta_s;
+
+    // for(auto vel : vec_velocities) std::cout << vel << " ";
+    // std::cout << std::endl;
+    std::vector<double> vec_tmp(vec_velocities);
+
+    std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
+    
+    curr_velocity = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
+  }
+*/
+#elif defined _Linear_Fitted5_
+/*
+  if(vec_velocities.size() < 5)
+  // if(q_velocities.size() < 5)
+  {
+    vec_velocities.emplace_back(period_distance / delta_s);
+    // q_velocities.push(period_distance / delta_s);
+    curr_velocity = period_distance / delta_s;
+  }
+  else
+  {
+    // q_velocities.pop();
+    // q_velocities.push(period_distance / delta_s);
+
+    for(int i = 0; i < 4; i++)
+    {
+      vec_velocities[i] = vec_velocities[i + 1];
+    }
+    vec_velocities[4] = period_distance / delta_s;
+
+    // for(auto vel : vec_velocities) std::cout << vel << " ";
+    // std::cout << std::endl;
+    std::vector<double> vec_tmp(vec_velocities);
+
+    std::sort(vec_tmp.begin(), vec_tmp.end(), sortByY);
+    
+    curr_velocity = (vec_tmp[1] + vec_tmp[2] + vec_tmp[3]) / 3;
+  }
+*/
+    // curr_velocity = new_velocity2;
+    // curr_velocity = new_velocity4;
+    curr_velocity = new_vel;
 #else
     curr_velocity = period_distance / delta_s;
 #endif
