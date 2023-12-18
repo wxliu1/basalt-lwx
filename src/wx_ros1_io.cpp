@@ -149,9 +149,20 @@ void CRos1IO::StereoCb(const sm::ImageConstPtr& image0_ptr,
   const sm::ImageConstPtr& image1_ptr)
 {
   //std::cout << "received images.\n";
+
+  static u_int64_t prev_t_ns = 0;
   
   u_int64_t t_ns = image0_ptr->header.stamp.nsec +
     image0_ptr->header.stamp.sec * 1e9;
+
+    if(prev_t_ns == t_ns) // 2023-12-18.
+    {
+      return ;
+    }
+    else
+    {
+      prev_t_ns = t_ns;
+    }
 
   basalt::OpticalFlowInput::Ptr data(new basalt::OpticalFlowInput);
   data->img_data.resize(CRos1IO::NUM_CAMS);
