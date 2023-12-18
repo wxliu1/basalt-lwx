@@ -894,6 +894,16 @@ double publish_velocity = curr_velocity;
       is_reliable = false;
     }
 
+    if(publish_velocity < 0.05) // put here better than other place.
+    {
+      zeroVelocity_(true);
+      publish_velocity = 0.00;
+    }
+    else
+    {
+      zeroVelocity_(false);
+    }
+
     prev_velocity = publish_velocity;
 
     double period_odom = publish_velocity * delta_s;
@@ -909,15 +919,7 @@ double publish_velocity = curr_velocity;
 
       // double delta_s = (data->t_ns - t_ns) * 1.0 * (1e-9);
 
-      if(publish_velocity < 0.05)
-      {
-        zeroVelocity_(true);
-        publish_velocity = 0.00;
-      }
-      else
-      {
-        zeroVelocity_(false);
-      }
+      
 
       odom_msg.velocity = publish_velocity;//period_distance / delta_s;
       odom_msg.delta_time = delta_s;

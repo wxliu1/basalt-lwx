@@ -96,8 +96,10 @@ struct PoseState {
   /// @param[in] inc 6x1 increment vector
   /// @param[in,out] T the pose to update
   inline static void incPose(const Vec6& inc, SE3& T) {
+    if(inc.array().isFinite().all()) { // add if condition to avoid NaN in increment (leads to SO3::exp crashing) by wxliu on 2023-12-18.
     T.translation() += inc.template head<3>();
     T.so3() = SO3::exp(inc.template tail<3>()) * T.so3();
+    }
   }
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW

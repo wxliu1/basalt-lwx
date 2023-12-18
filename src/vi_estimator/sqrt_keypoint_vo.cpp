@@ -419,7 +419,9 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   // 不变量：opt_flow_meas->t_ns是最后一个姿态状态，并且等于last_state_t_ns 
   BASALT_ASSERT(opt_flow_meas->t_ns == last_state_t_ns);
   BASALT_ASSERT(!frame_poses.empty());
-  BASALT_ASSERT(last_state_t_ns == frame_poses.rbegin()->first);
+  // 由于frame_poses是保存帧的时间戳、位姿的map, 当程序未重启而连续第二次播放数据集时，
+  // 以时间戳为key存放对应位姿的元素，就不一定是map容器类型frame_poses的最后一个元素了。
+  BASALT_ASSERT(last_state_t_ns == frame_poses.rbegin()->first); // tmp comment on 2023-12-18.
 
   // save results
   prev_opt_flow_res[opt_flow_meas->t_ns] = opt_flow_meas; // 保存当前帧的光流结果

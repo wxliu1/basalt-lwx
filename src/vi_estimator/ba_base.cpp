@@ -69,15 +69,23 @@ void BundleAdjustmentBase<Scalar>::optimize_single_frame_pose(
 
     for (size_t cam_id = 0; cam_id < connected_obs.size(); cam_id++) {
       TimeCamId tcid_t(state_t.getT_ns(), cam_id);
-      for (const auto& lm_id : connected_obs[cam_id]) {
-        const Keypoint<Scalar>& kpt_pos = lmdb.getLandmark(lm_id);
+      for (const auto& lm_id : connected_obs[cam_id]) { // 遍历特征点id
+        const Keypoint<Scalar>& kpt_pos = lmdb.getLandmark(lm_id); // 根据特征点id，从lmdb中获取keypoint position
         std::pair<TimeCamId, TimeCamId> map_key(kpt_pos.host_kf_id, tcid_t);
 
         if (abs_lin_data.count(map_key) == 0) {
           const PoseStateWithLin<Scalar>& state_h =
               frame_poses.at(kpt_pos.host_kf_id.frame_id);
 
-          BASALT_ASSERT(kpt_pos.host_kf_id.frame_id != state_t.getT_ns());
+          /*
+           * frame_id(帧id) 用帧的时间戳来表示 //? 主导帧的时间戳不等于当前帧的时间戳
+           * 仔细看了sqrt_keypoint_vo.cpp的代码，确实不应该相等，因为optimize_single_frame_pose单帧优化之后，
+           * 才会有TimeCamId tcidl(opt_flow_meas->t_ns, 0); 才有后面的将当前帧的点存入特征点数据库，
+           * 主帧id为：当前帧的时间戳（作为帧id）+ 相机序号0（作为相机id）构成。
+           * lmdb.addLandmark(lm_id, kpt_pos);
+           * 因此该行断言失败，只能证明相同时间戳的帧进来了第二次，导致问题出现。
+          */
+          BASALT_ASSERT(kpt_pos.host_kf_id.frame_id != state_t.getT_ns()); 
 
           AbsLinData& ald = abs_lin_data[map_key];
 
