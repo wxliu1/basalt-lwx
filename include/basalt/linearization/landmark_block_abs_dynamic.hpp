@@ -259,7 +259,8 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
   }
 
   // lambda < 0 means computing exact model cost change
-  virtual inline void backSubstitute(const VecX& pose_inc,
+  // virtual inline void backSubstitute(const VecX& pose_inc,
+  virtual inline bool backSubstitute(const VecX& pose_inc,
                                      Scalar& l_diff) override {
     BASALT_ASSERT(state == State::Marginalized);
 
@@ -325,6 +326,7 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
         !lm_ptr->direction.array().isFinite().all() ||
         !std::isfinite(lm_ptr->inv_dist)) {
       std::cerr << "Numerical failure in backsubstitution\n";
+      return false; // added by wxliu on 2023-12-19
     }
 
     // Note: scale only after computing model cost change
@@ -332,6 +334,7 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
 
     lm_ptr->direction += inc.template head<2>();
     lm_ptr->inv_dist = std::max(Scalar(0), lm_ptr->inv_dist + inc[2]);
+    return true; // added by wxliu on 2023-12-19
   }
 
   virtual inline size_t numReducedCams() const override {

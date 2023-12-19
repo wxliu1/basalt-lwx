@@ -25,6 +25,8 @@ extern basalt::OpticalFlowBase::Ptr opt_flow_ptr; // 2023-11-28.
 
 // #define _Linear_Fitted5_
 
+#define _VERIFY_CONFIG_FILE
+
 using namespace wx;
 
 CRos1IO::CRos1IO(const ros::NodeHandle& pnh, const TYamlIO &yaml) noexcept
@@ -46,10 +48,11 @@ CRos1IO::CRos1IO(const ros::NodeHandle& pnh, const TYamlIO &yaml) noexcept
 #endif
 
 
-#ifdef _VALIDATE_CONFIG_FILE
+#ifdef _VERIFY_CONFIG_FILE
   std::cout << "CRos1IO---\n" << "calib_path=" << yaml_.cam_calib_path << std::endl
     << "config_path=" << yaml_.config_path << std::endl
-    << "dt_ns = " << yaml_.dt_ns << std::endl;
+    << "dt_ns = " << yaml_.dt_ns << std::endl
+    << "slow_velocity = " << yaml_.slow_velocity << "  zero_velocity = " << yaml_.zero_velocity << std::endl;
 
   int cnt = yaml_.vec_tracked_points.size();
   std::string strConfidenceInterval = "tracked_points:[";
@@ -196,6 +199,14 @@ void CRos1IO::StereoCb(const sm::ImageConstPtr& image0_ptr,
 #else
   data_in0 = (const uint8_t*)image0_ptr->data.data();
   data_in1 = (const uint8_t*)image1_ptr->data.data();
+#endif
+
+#if 0 // for check bright points
+  auto image0 = cb::toCvShare(image0_ptr)->image;
+  // cv::Mat mask = image0 > 255;
+  cv::Mat mask = image0 == 255;
+  int count = cv::countNonZero(mask);
+  ROS_INFO("Number of pixels with value > 250: %d", count);
 #endif
 
   // 拷贝左目图像数据
@@ -905,7 +916,7 @@ double publish_velocity = curr_velocity;
       is_reliable = false;
     }
 
-    if(publish_velocity < 0.05) // put here better than other place.
+    if(publish_velocity < yaml_.zero_velocity)//0.05) // put here better than other place.
     {
       zeroVelocity_(true);
       publish_velocity = 0.00;
@@ -913,6 +924,15 @@ double publish_velocity = curr_velocity;
     else
     {
       zeroVelocity_(false);
+    }
+
+    if(publish_velocity < yaml_.slow_velocity)//3.0)
+    {
+      slowVelocity_(true);
+    }
+    else
+    {
+      slowVelocity_(false);
     }
 
     prev_velocity = publish_velocity;

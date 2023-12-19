@@ -47,6 +47,7 @@ struct VioConfig {
 
   std::string optical_flow_type;
   int optical_flow_detection_grid_size;
+  int delta_grid_size; // 2023-12-19.
   float optical_flow_max_recovered_dist2;
   int optical_flow_pattern;
   int optical_flow_max_iterations;

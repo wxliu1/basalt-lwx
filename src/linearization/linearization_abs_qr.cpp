@@ -293,9 +293,17 @@ Scalar LinearizationAbsQR<Scalar, POSE_SIZE>::backSubstitute(
     const VecX& pose_inc) {
   BASALT_ASSERT(pose_inc.size() == signed_cast(aom.total_size));
 
+  bool inc_invalid = false;
+
   auto body = [&](const tbb::blocked_range<size_t>& range, Scalar l_diff) {
     for (size_t r = range.begin(); r != range.end(); ++r) {
-      landmark_blocks[r]->backSubstitute(pose_inc, l_diff);
+      // landmark_blocks[r]->backSubstitute(pose_inc, l_diff);
+      bool ret = landmark_blocks[r]->backSubstitute(pose_inc, l_diff);
+      if(!ret)
+      {
+        inc_invalid = true;
+        break;
+      }
     }
     return l_diff;
   };
@@ -317,6 +325,8 @@ Scalar LinearizationAbsQR<Scalar, POSE_SIZE>::backSubstitute(
     l_diff += estimator->computeMargPriorModelCostChange(
         *marg_lin_data, marg_scaling, pose_inc_marg);
   }
+
+  if(inc_invalid) return -0.000001;
 
   return l_diff;
 }

@@ -640,7 +640,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
 
   // step5 优化和边缘化
   //optimize_and_marg(num_points_connected, lost_landmaks);
-  bool converged = optimize_and_marg(num_points_connected, lost_landmaks);
+  int converged = optimize_and_marg(num_points_connected, lost_landmaks);
 /*
   if(!converged)
   {
@@ -684,7 +684,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   {
     //  if(converged)
     //if(converged || cam0_num_observations >= 6)
-    if(!isBigTranslation && (converged || cam0_num_observations >= 6))
+    if(!isBigTranslation && ((converged == 1) || cam0_num_observations >= 6) && (converged != 2))
     {
       g_imu->SetUseImuPose(false);
     }
@@ -1314,7 +1314,10 @@ void SqrtKeypointVoEstimator<Scalar_>::marginalize(
 }
 
 template <class Scalar_>
-bool SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'void' to 'bool' on 2023-11-13.
+int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'void' to 'int' on 2023-11-13.
+  
+  int retval = 1;
+
   if (config.vio_debug) {
     std::cout << "=================================" << std::endl;
   }
@@ -1531,6 +1534,9 @@ bool SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from '
         Timer t;
         l_diff = lqr->backSubstitute(inc); // 用增量来更新点
         stats.add("backSubstitute", t.reset()).format("ms");
+
+        if(l_diff < -1e-7) retval = 2;
+        // std::cout << "l_diff=" << l_diff << std::endl;
       }
 
       // undo jacobian scaling before applying increment to poses
@@ -1698,15 +1704,19 @@ bool SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from '
     std::cout << "=================================" << std::endl;
   }
 
-  return converged; // 2023-11-13.
+  // return converged; // 2023-11-13.
+
+  retval = (retval == 2)? retval : (converged? 1: 0);
+  return retval;
 }
 
 template <class Scalar_>
-bool SqrtKeypointVoEstimator<Scalar_>::optimize_and_marg( // change return type from 'void' to 'bool' on 2023-11-13.
+int SqrtKeypointVoEstimator<Scalar_>::optimize_and_marg( // change return type from 'void' to 'int' on 2023-11-13.
     const std::map<int64_t, int>& num_points_connected,
     const std::unordered_set<KeypointId>& lost_landmaks) {
   // optimize();
-  bool converged = optimize();
+  // bool converged = optimize();
+  int converged = optimize();
   marginalize(num_points_connected, lost_landmaks);
 
   return converged; // 2023-11-13

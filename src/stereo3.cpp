@@ -144,6 +144,11 @@ void zeroVelocity(bool bl)
 
 }
 
+void slowVelocity(bool bl)
+{
+  opt_flow_ptr->SetSlowVelocity(bl);
+}
+
 // 2023-11-10.
 void feedImage(basalt::OpticalFlowInput::Ptr data, ImuProcess* imu) 
 {
@@ -233,6 +238,7 @@ int main(int argc, char** argv) {
   // 2023-11-10
   struct TYamlIO yaml;
   yaml.ReadConfiguration();
+#ifdef _VERIFY_CONFIG_FILE  
   std::cout << "calib_path=" << yaml.cam_calib_path << std::endl
     << "config_path=" << yaml.config_path << std::endl
     << "dt_ns = " << yaml.dt_ns << std::endl;
@@ -266,7 +272,7 @@ int main(int argc, char** argv) {
   }
 
   std::cout << strConfidenceInterval << std::endl;
-
+#endif
 
   // the end.
 
@@ -383,6 +389,7 @@ int main(int argc, char** argv) {
 #endif 
   node.stop_ = std::bind(&stop);
   node.zeroVelocity_ = std::bind(&zeroVelocity, std::placeholders::_1);
+  node.slowVelocity_ = std::bind(&slowVelocity, std::placeholders::_1);
 
   // the end.
 

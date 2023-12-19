@@ -38,6 +38,8 @@ struct TYamlIO
     std::vector<int> vec_tracked_points;
     std::vector<double> vec_confidence_levels;
     double coefficient { 1.0 };
+    double slow_velocity { 3.0 };
+    double zero_velocity { 0.05 };
 
     void ReadConfiguration();
 #ifdef _NEED_WRITE_YAML    

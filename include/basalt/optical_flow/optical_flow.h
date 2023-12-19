@@ -90,6 +90,7 @@ class OpticalFlowBase {
 
   virtual void Reset() = 0; // 2023-11-19.
   virtual void SetZeroVelocity(bool bl) = 0;
+  virtual void SetSlowVelocity(bool bl) = 0;
 };
 
 // 光流的构造：1.点到点光流 2.帧到帧光流

@@ -44,6 +44,8 @@ void TYamlIO::ReadConfiguration()
     config["dt_ns"] = dt_ns;
     config["fps"] = fps;
     config["coefficient"] = coefficient;
+    config["slow_velocity"] = slow_velocity;
+    config["zero_velocity"] = zero_velocity;
 /*
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
                               0.0, 1.0, 0.0, 0.0,
@@ -84,6 +86,12 @@ void TYamlIO::ReadConfiguration()
     dt_ns = config["dt_ns"].as<long>();
     fps = config["fps"].as<int>();
     coefficient = config["coefficient"].as<double>();
+
+    if(config["slow_velocity"].Type() == YAML::NodeType::Scalar)
+    slow_velocity = config["slow_velocity"].as<double>();
+
+    if(config["zero_velocity"].Type() == YAML::NodeType::Scalar)
+    zero_velocity = config["zero_velocity"].as<double>();
 
     // read imu_cam extrinsic
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,

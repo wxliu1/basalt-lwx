@@ -87,7 +87,8 @@ class LandmarkBlock {
   virtual void setLandmarkDamping(Scalar lambda) = 0;
 
   // lambda < 0 means computing exact model cost change
-  virtual void backSubstitute(const VecX& pose_inc, Scalar& l_diff) = 0;
+  // virtual void backSubstitute(const VecX& pose_inc, Scalar& l_diff) = 0;
+  virtual bool backSubstitute(const VecX& pose_inc, Scalar& l_diff) = 0;
 
   virtual void addQ2JpTQ2Jp_mult_x(VecX& res, const VecX& x_pose) const = 0;
 

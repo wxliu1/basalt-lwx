@@ -113,13 +113,13 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   // int64_t propagate();
   // void addNewState(int64_t data_t_ns);
 
-  bool optimize_and_marg(const std::map<int64_t, int>& num_points_connected,
-                         const std::unordered_set<KeypointId>& lost_landmaks); // change return type from 'void' to 'bool' on 2023-11-13.
+  int optimize_and_marg(const std::map<int64_t, int>& num_points_connected,
+                         const std::unordered_set<KeypointId>& lost_landmaks); // change return type from 'void' to 'int' on 2023-11-13.
 
   void marginalize(const std::map<int64_t, int>& num_points_connected,
                    const std::unordered_set<KeypointId>& lost_landmaks);
   //void optimize();
-  bool optimize(); // modifid. 2023-11-13
+  int optimize(); // modifid. 2023-11-13
 
   void logMargNullspace();
   Eigen::VectorXd checkMargNullspace() const;

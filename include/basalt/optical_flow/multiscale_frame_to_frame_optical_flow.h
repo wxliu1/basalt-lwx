@@ -109,6 +109,8 @@ class MultiscaleFrameToFrameOpticalFlow : public OpticalFlowBase {
 
   virtual void SetZeroVelocity(bool bl) {}
 
+  virtual void SetSlowVelocity(bool bl) {}
+
   void processingLoop() {
     OpticalFlowInput::Ptr input_ptr;
 

@@ -82,6 +82,14 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     grid_size_ = config.optical_flow_detection_grid_size;
     max_iterations_ = config.optical_flow_max_iterations;
 
+    if(isSlowVelocity_)
+    {
+      // grid_size_ = config.optical_flow_detection_grid_size * 2;
+      // grid_size_ = config.optical_flow_detection_grid_size + 20;
+      grid_size_ = config.optical_flow_detection_grid_size + config.delta_grid_size;
+      std::cout << "grid size: " << grid_size_ << std::endl;
+    }
+
     // 设置输入队列大小: 输入队列设置容量  
     input_queue.set_capacity(10);
 
@@ -143,6 +151,25 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     }
 
   }
+
+   virtual void SetSlowVelocity(bool bl) {
+    if(isSlowVelocity_ != bl)
+    {
+      isSlowVelocity_ = bl;
+      if(isSlowVelocity_)
+      {
+        // grid_size_ = config.optical_flow_detection_grid_size * 2;
+        // grid_size_ = config.optical_flow_detection_grid_size + 20;
+        grid_size_ = config.optical_flow_detection_grid_size + config.delta_grid_size;
+      }
+      else
+      {
+        grid_size_ = config.optical_flow_detection_grid_size;
+      }
+
+      std::cout << "grid size: " << grid_size_ << std::endl;
+    }
+   }
 
   void processingLoop() {
     OpticalFlowInput::Ptr input_ptr;
@@ -622,6 +649,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
   // the end.
 
   bool isZeroVelocity_ { false };
+  bool isSlowVelocity_ { true };
   std::atomic<int> grid_size_ { 0 };
   std::atomic<int> max_iterations_ { 0 };
 };
