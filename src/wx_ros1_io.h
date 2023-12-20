@@ -194,6 +194,7 @@ private:
     ros::Publisher pub_warped_img;
 
     ros::Publisher pub_my_odom_;
+    std::atomic<bool> isLampOn_ { true };
 
     // Kalman_Filter_Struct kalman_filter_pt1;
     /* =

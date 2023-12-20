@@ -13,6 +13,9 @@ use_double: true
 dt_ns: 0
 fps: 50
 coefficient: 1.02
+slow_velocity: 3
+zero_velocity: 0.05
+mean_value: 68.1
 confidence_interval: 
    tracked_points: [40]
    confidence_levels: [0.0]

@@ -52,7 +52,8 @@ CRos1IO::CRos1IO(const ros::NodeHandle& pnh, const TYamlIO &yaml) noexcept
   std::cout << "CRos1IO---\n" << "calib_path=" << yaml_.cam_calib_path << std::endl
     << "config_path=" << yaml_.config_path << std::endl
     << "dt_ns = " << yaml_.dt_ns << std::endl
-    << "slow_velocity = " << yaml_.slow_velocity << "  zero_velocity = " << yaml_.zero_velocity << std::endl;
+    << "slow_velocity = " << yaml_.slow_velocity << "  zero_velocity = " << yaml_.zero_velocity << std::endl
+    << "mean_value = " << yaml_.mean_value << std::endl;
 
   int cnt = yaml_.vec_tracked_points.size();
   std::string strConfidenceInterval = "tracked_points:[";
@@ -206,7 +207,13 @@ void CRos1IO::StereoCb(const sm::ImageConstPtr& image0_ptr,
   // cv::Mat mask = image0 > 255;
   cv::Mat mask = image0 == 255;
   int count = cv::countNonZero(mask);
-  ROS_INFO("Number of pixels with value > 250: %d", count);
+  // ROS_INFO("Number of pixels with value > 250: %d", count);
+  ROS_INFO("Number of pixels equal to 255: %d", count);
+
+
+  cv::Scalar meanValue = cv::mean(image0);
+  float MyMeanValue = meanValue.val[0];//.val[0]表示第一个通道的均值
+  std::cout<<"Average of all pixels in image0 with 1st channel is "<< MyMeanValue << std::endl;
 #endif
 
   // 拷贝左目图像数据
@@ -997,7 +1004,7 @@ double publish_velocity = curr_velocity;
       }
 
       // if(nUseImu == 1)
-      if((nUseImu == 1) || (is_reliable == false))
+      if((nUseImu == 1) || (is_reliable == false) || isLampOn_ == false)
       {
         confidence_coefficient = 0.0;
       }
@@ -1048,8 +1055,8 @@ inline void CRos1IO::getcolor(float p, float np, float& r, float& g, float& b) {
 
 void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
 {
-  if (pub_warped_img.getNumSubscribers() == 0)
-    return;
+  // if (pub_warped_img.getNumSubscribers() == 0)
+  //   return;
 
   static cv::Mat disp_frame;
 
@@ -1063,7 +1070,7 @@ void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
     // img_data is a vector<ImageData>
     basalt::ImageData imageData = data->opt_flow_res->input_images->img_data[cam_id];
     // std::cout << "w=" << imageData.img->w << "  h=" << imageData.img->h << std::endl;
-   data_in = imageData.img->ptr;
+    data_in = imageData.img->ptr;
     disp_frame = cv::Mat::zeros(imageData.img->h, imageData.img->w, CV_8UC1); // CV_8UC3
     data_out = disp_frame.ptr();
 
@@ -1074,7 +1081,36 @@ void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
       data_out[i] = val;
       // disp_frame.at(<>)
     }
- /**/
+
+    // check if lamp is on or off 2023-12-20.
+    // if(1)
+    {
+      cv::Scalar meanValue = cv::mean(disp_frame);
+      float MyMeanValue = meanValue.val[0];//.val[0]表示第一个通道的均值
+      // std::cout<<"Average of all pixels in image0 with 1st channel is "<< MyMeanValue << std::endl;
+      if(MyMeanValue >= yaml_.mean_value)
+      {
+        if(!isLampOn_)
+        {
+          isLampOn_ = true;
+          std::cout << std::boolalpha << "lamp on :" << isLampOn_ << std::endl;
+        }
+        
+      }
+      else
+      {
+        if(isLampOn_)
+        {
+          isLampOn_ = false;
+          std::cout << std::boolalpha << "lamp on :" << isLampOn_ << std::endl;
+        }
+        
+      }
+    }
+
+    if (pub_warped_img.getNumSubscribers() == 0)
+    return;
+    // the end.
 
 /*
     cv::Mat img(cv::Size(imageData.img->w, imageData.img->h), CV_16UC1, imageData.img->ptr);

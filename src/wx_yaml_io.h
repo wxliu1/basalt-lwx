@@ -40,6 +40,7 @@ struct TYamlIO
     double coefficient { 1.0 };
     double slow_velocity { 3.0 };
     double zero_velocity { 0.05 };
+    double mean_value { 0.0 };
 
     void ReadConfiguration();
 #ifdef _NEED_WRITE_YAML    
