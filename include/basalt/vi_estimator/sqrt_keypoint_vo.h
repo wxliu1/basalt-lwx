@@ -266,5 +266,10 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   SE3 T_w_i_prev;
   // the end.
 
+  bool isReset_ { false };
+  void SetReset(bool bl) { isReset_ =bl; }
+  inline bool GetReset() { return isReset_;}
+  void ExcuteReset();
+
 };
 }  // namespace basalt

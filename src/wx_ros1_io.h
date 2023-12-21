@@ -196,6 +196,15 @@ private:
     ros::Publisher pub_my_odom_;
     std::atomic<bool> isLampOn_ { true };
 
+#if 0 //def _DEBUG_MODE_
+    int nTracked_confidence_count { 0 };
+    int nVelocity_confidence_count { 0 };
+    int nLamp_confidence_count { 0 };
+#endif
+#if 0   
+    int zero_confidence { 0 };
+    int total_confidence { 0 };
+#endif
     // Kalman_Filter_Struct kalman_filter_pt1;
     /* =
     {

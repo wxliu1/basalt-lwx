@@ -219,6 +219,25 @@ void Reset()
   
 }
 
+void command()
+{
+  while (1)
+  {
+
+    char c = getchar();
+    if (c == 'r')
+    {
+      std::cout << "press 'r' to reset algorithm" << std::endl;
+      Reset();
+      std::cout << "reset command over." << std::endl;
+    }
+
+
+    std::chrono::milliseconds dura(500);
+    std::this_thread::sleep_for(dura);
+  }
+}
+
 int main(int argc, char** argv) {
 
   // 注册中断信号处理函数
@@ -229,6 +248,10 @@ int main(int argc, char** argv) {
   // step 1: 命令行参数解析  
   CLI::App app{"App description"};
 */
+
+  std::thread keyboard_command_process;
+  keyboard_command_process = std::thread(command);
+  // keyboard_command_process.join();
 
   // int *p = NULL;
   // std::cout<<*p<<std::endl;

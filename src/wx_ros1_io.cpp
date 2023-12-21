@@ -998,10 +998,45 @@ double publish_velocity = curr_velocity;
           if(nTrackedPoints <= yaml_.vec_tracked_points[i] && publish_velocity >= 0.05) // if velociy is 0, tracked points is fewer than moving 2023-12-15
           {
             confidence_coefficient = yaml_.vec_confidence_levels[i];
+            #if 0
+            nTracked_confidence_count++;
+            #endif
             break ;
           }
         }
       }
+
+      #if 0
+      if(confidence_coefficient < 1e-6 && isLampOn_)
+      {
+        zero_confidence ++;
+      }
+
+      if(isLampOn_)
+      {
+        total_confidence ++;
+      }
+      std::cout << " total_confidence: " << total_confidence 
+        << "zero_confidence :" << zero_confidence 
+        << " Percentage:" << (zero_confidence * 1.0 / total_confidence * 100) << "%" << std::endl;
+      #endif
+
+      #if 0
+      if(confidence_coefficient == 1 && is_reliable == false)
+      {
+        nVelocity_confidence_count++;
+      }
+
+      if(confidence_coefficient == 1 && isLampOn_ == false)
+      {
+        nLamp_confidence_count++;
+      }
+
+      std::cout << "---statistics---\n" << "track - confidence == 0 counter: " << nTracked_confidence_count << std::endl
+          << "velocity - confidence == 0 counter: " << nVelocity_confidence_count << std::endl
+          << "lamp - confidence == 0 counter: " << nLamp_confidence_count << std::endl
+          << "---the end---" << std::endl;
+      #endif
 
       // if(nUseImu == 1)
       if((nUseImu == 1) || (is_reliable == false) || isLampOn_ == false)

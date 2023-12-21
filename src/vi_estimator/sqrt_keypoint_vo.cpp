@@ -115,9 +115,20 @@ SqrtKeypointVoEstimator<Scalar_>::SqrtKeypointVoEstimator(
 template <class Scalar_>
 void SqrtKeypointVoEstimator<Scalar_>::Reset()
 {
-  // move here for waiting. 2023-11-21.
-  std::unique_lock<std::mutex> lk(vio_m);
+  std::unique_lock<std::mutex> lk(vio_m); // 2023-12-21.
   vio_cv.wait(lk);
+
+  isReset_ = true;
+
+  // move to ExcuteReset()
+}
+
+template <class Scalar_>
+void SqrtKeypointVoEstimator<Scalar_>::ExcuteReset()
+{
+  // move here for waiting. 2023-11-21.
+  // std::unique_lock<std::mutex> lk(vio_m);
+  // vio_cv.wait(lk);
   // the end.
 
   std::cout << "reset backend.\n";
@@ -180,7 +191,6 @@ void SqrtKeypointVoEstimator<Scalar_>::Reset()
   // TODO:
   // stats_all_.Reset();
   // stats_sums_.Reset();
-  
 }
 
 template <class Scalar_>
@@ -249,6 +259,16 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
     bool add_pose = false;
 
     while (true) {
+
+      if(GetReset())
+      {
+        ExcuteReset();
+        SetReset(false);
+        add_pose = false;
+        prev_frame = nullptr;
+        std::cout << "reset backend thread.\n";
+
+      }
       
       // get next optical flow result (blocking if queue empty) 获取光流结果，如果队列为空会阻塞
       vision_data_queue.pop(curr_frame);
@@ -324,7 +344,7 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
       //measure(curr_frame, add_pose); // 测量: 后端优化的入口
       bool bl = measure(curr_frame, add_pose); // 测量: 后端优化的入口 // modified 2023-11-20
       prev_frame = curr_frame;
-
+#if 0 // 2023-12-21.
       // 2023-11-20
       // if(isResetAlgorithm_)
       if(!bl)
@@ -346,7 +366,7 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
       }
       
       // the end.
-      
+#endif      
     }
 
     if (out_vis_queue) out_vis_queue->push(nullptr);
@@ -426,9 +446,11 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   // save results
   prev_opt_flow_res[opt_flow_meas->t_ns] = opt_flow_meas; // 保存当前帧的光流结果
 
+  constexpr int MIN_OBSERVATIONS = 6;
+
   // 2023-11-15.
   int cam0_num_observations = opt_flow_meas->observations[0].size();
-  if(cam0_num_observations < 6)
+  if(cam0_num_observations < MIN_OBSERVATIONS)
   std::cout << "cam0 observation count: " << opt_flow_meas->observations[0].size() << std::endl;
   // the end.
   
@@ -491,7 +513,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
     take_kf = true; // 如果当前帧应该成为关键帧，那么take_kf为true.
 
   //if (config.vio_debug) {
-  if (config.vio_debug || cam0_num_observations < 6) {
+  if (config.vio_debug || cam0_num_observations < MIN_OBSERVATIONS) {
     std::cout << "connected0: " << connected0 << " unconnected0: "
               << unconnected_obs0.size() << std::boolalpha << " take_kf: " << take_kf << std::endl;
   }
@@ -684,7 +706,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   {
     //  if(converged)
     //if(converged || cam0_num_observations >= 6)
-    if(!isBigTranslation && ((converged == 1) || cam0_num_observations >= 6) && (converged != 2))
+    if(!isBigTranslation && ((converged == 1) || cam0_num_observations >= MIN_OBSERVATIONS) && (converged != 2))
     {
       g_imu->SetUseImuPose(false);
     }
@@ -828,6 +850,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   stats_sums_.add("measure", t_total.elapsed()).format("ms"); // 统计measure函数消耗的时间
 
   if(g_imu->UseImuPose()) // 2023-11-20 10:22
+  // if(nTrackedPoints < 20|| g_imu->UseImuPose()) // test on 2023-12-20.
   {
     std::cout << "begin reset algorithm.\n";
     reset_(); 
