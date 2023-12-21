@@ -178,6 +178,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
     while (true) {
       if(GetReset()) // 2023-11-20 11:12
       {
+        // std::this_thread::sleep_for(std::chrono::milliseconds(2000)); // only imitate program to quit and run
         t_ns = -1;
         frame_counter = 0;
         last_keypoint_id = 0;

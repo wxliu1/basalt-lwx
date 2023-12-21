@@ -115,6 +115,7 @@ SqrtKeypointVoEstimator<Scalar_>::SqrtKeypointVoEstimator(
 template <class Scalar_>
 void SqrtKeypointVoEstimator<Scalar_>::Reset()
 {
+  std::cout << "1 backend reset" << std::endl;
   std::unique_lock<std::mutex> lk(vio_m); // 2023-12-21.
   vio_cv.wait(lk);
 

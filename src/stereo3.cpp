@@ -212,10 +212,30 @@ void Reset()
   vio_mutex.unlock();
 */
 
-  // reset_mutex.lock();
+/*
+ * comment 2023-12-21.
   opt_flow_ptr->Reset();
   vio->Reset();
-  // reset_mutex.unlock();
+
+ */
+
+  // new method: ensure vio can be reset.
+  std::shared_ptr<std::thread> t1;
+  t1.reset(new std::thread([&]() {
+    // while(true) {
+    // }
+    vio->Reset();
+
+    std::cout << "Finished t1: vio reset." << std::endl;
+  }));
+
+  opt_flow_ptr->Reset();
+
+  if(t1) {
+    t1->join();
+    // t1->detach();
+  } 
+  // the end.
   
 }
 

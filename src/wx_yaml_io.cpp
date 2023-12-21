@@ -17,8 +17,13 @@ void TYamlIO::ReadConfiguration()
 
   // read parameters from file.
   // std::string config_file = "/home/lwx/./sys.yaml";
-  std::string config_file = "/root/./sys.yaml";
+  // std::string config_file = "/root/./sys.yaml";
+
+  // std::string pkg_path = ament_index_cpp::get_package_share_directory("stereo3");
+  // std::string config_file = pkg_path + "/config/stereo3.yaml";
+
   // std::string config_file = "/root/stereo3_ws/install/share/stereo3/config/sys.yaml";
+  std::string config_file = "/root/dev/stereo3_ros1_ws/install/share/stereo3/config/sys.yaml";
   if(access(config_file.c_str(), 0) != 0)
   {
     // '!= 0' indicate that file do not exist.

@@ -1,0 +1,34 @@
+show_gui: false
+print_queue: false
+# cam_calib_path: /root/lwx_dataset/config/173_calib_vo.json
+# cam_calib_path: /root/stereo3_ws/install/share/stereo3/config/173_calib_vo.json
+cam_calib_path: /root/dev/stereo3_ros1_ws/install/share/stereo3/config/173_calib_vo.json
+dataset_path: ""
+dataset_type: ""
+# config_path: /root/lwx_dataset/config/173_vio_config.json
+# config_path: /root/stereo3_ws/install/share/stereo3/config/vio_config.json
+config_path: /root/dev/stereo3_ros1_ws/install/share/stereo3/config/vio_config.json
+result_path: ""
+trajectory_fmt: ""
+trajectory_groundtruth: false
+num_threads: 0
+use_imu: true
+use_double: true
+dt_ns: 0
+fps: 50
+coefficient: 1.00
+slow_velocity: 2 # 0.01 #3
+zero_velocity: 0.061
+mean_value: 68.1
+confidence_interval: 
+   tracked_points: [30]
+   confidence_levels: [0.0]
+   
+body_T_cam0: 
+   rows: 4
+   cols: 4
+   dt: d
+   data: [ -9.9999304088183916e-01, -1.4807612280684276e-03,-3.4242567190873262e-03, 4.4607355399578330e-02,
+           -1.4727585076285627e-03, 9.9999618140394653e-01,-2.3384096953731918e-03, 1.2325876739317486e-03,
+           3.4277062696463807e-03, -2.3333503188884726e-03,-9.9999140311605617e-01, -2.7600224304489100e-02,
+           0., 0., 0., 1. ]
