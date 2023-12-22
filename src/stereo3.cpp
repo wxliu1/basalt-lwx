@@ -415,7 +415,7 @@ int main(int argc, char** argv) {
 
   // 2023-11-10.
  
-  ros::init(argc, argv, "streo3_node");  // node name
+  ros::init(argc, argv, "stereo3_node");  // node name
   ros::MultiThreadedSpinner spinner(6);  // use 6 threads
 
   // wx::CRos1IO node{ros::NodeHandle{"~"}, yaml.use_imu, yaml.fps, yaml.vec_tracked_points, yaml.vec_confidence_levels, yaml.dt_ns};
