@@ -70,7 +70,7 @@ class BundleAdjustmentBase {
       Eigen::aligned_vector<Eigen::Matrix<Scalar2, 3, 1>>& points,
       std::vector<int>& ids) const;
 
-  void computeDelta(const AbsOrderMap& marg_order, VecX& delta) const;
+  bool computeDelta(const AbsOrderMap& marg_order, VecX& delta) const; // change return type from 'void' to 'bool',if failed.
 
   void linearizeMargPrior(const MargLinData<Scalar>& mld,
                           const AbsOrderMap& aom, MatX& abs_H, VecX& abs_b,

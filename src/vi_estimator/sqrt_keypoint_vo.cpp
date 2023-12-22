@@ -115,11 +115,18 @@ SqrtKeypointVoEstimator<Scalar_>::SqrtKeypointVoEstimator(
 template <class Scalar_>
 void SqrtKeypointVoEstimator<Scalar_>::Reset()
 {
-  std::cout << "1 backend reset" << std::endl;
-  std::unique_lock<std::mutex> lk(vio_m); // 2023-12-21.
-  vio_cv.wait(lk);
+  if(initialized == true)
+  {
+    std::cout << "1 start to reset vio backend" << std::endl;
+    std::unique_lock<std::mutex> lk(vio_m); // 2023-12-21.
+    vio_cv.wait(lk);
 
-  isReset_ = true;
+    isReset_ = true;
+  }
+  else
+  {
+    std::cout << "system is not initialized.\n";
+  }
 
   // move to ExcuteReset()
 }
@@ -886,7 +893,7 @@ Eigen::VectorXd SqrtKeypointVoEstimator<Scalar_>::checkMargEigenvalues() const {
 }
 
 template <class Scalar_>
-void SqrtKeypointVoEstimator<Scalar_>::marginalize(
+bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
     const std::map<int64_t, int>& num_points_connected,
     const std::unordered_set<KeypointId>& lost_landmaks) {
   BASALT_ASSERT(frame_states.empty());
@@ -1308,12 +1315,21 @@ void SqrtKeypointVoEstimator<Scalar_>::marginalize(
       // and thus rnew = (res - Jnew*delta).
 
       VecX delta;
-      computeDelta(marg_data.order, delta);
+      bool bl = computeDelta(marg_data.order, delta);
+      if(!bl)
+      {
+        return false;
+      }
+
       marg_data.b -= marg_data.H * delta;
 
       if (config.vio_debug || config.vio_extended_logging) {
         VecX delta;
-        computeDelta(marg_data.order, delta);
+        bool bl = computeDelta(marg_data.order, delta);
+        if(!bl)
+        {
+          return false;
+        }
         nullspace_marg_data.b -= nullspace_marg_data.H * delta;
       }
 
@@ -1335,6 +1351,8 @@ void SqrtKeypointVoEstimator<Scalar_>::marginalize(
   }
 
   stats_sums_.add("marginalize", t_total.elapsed()).format("ms");
+
+  return true;
 }
 
 template <class Scalar_>
@@ -1559,7 +1577,12 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
         l_diff = lqr->backSubstitute(inc); // 用增量来更新点
         stats.add("backSubstitute", t.reset()).format("ms");
 
-        if(l_diff < -1e-7) retval = 2;
+        if(l_diff < -1e-7 || !inc.array().isFinite().all()) 
+        {
+          std::cout << "infinite, iteration abnormal.\n";
+          retval = 2;
+          return retval;
+        }
         // std::cout << "l_diff=" << l_diff << std::endl;
       }
 
@@ -1741,7 +1764,11 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize_and_marg( // change return type f
   // optimize();
   // bool converged = optimize();
   int converged = optimize();
-  marginalize(num_points_connected, lost_landmaks);
+  bool bl = marginalize(num_points_connected, lost_landmaks);
+  if(!bl)
+  {
+    converged = 2;
+  }
 
   return converged; // 2023-11-13
 }

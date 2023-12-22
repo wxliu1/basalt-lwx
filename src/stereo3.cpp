@@ -433,6 +433,7 @@ int main(int argc, char** argv) {
   node.stop_ = std::bind(&stop);
   node.zeroVelocity_ = std::bind(&zeroVelocity, std::placeholders::_1);
   node.slowVelocity_ = std::bind(&slowVelocity, std::placeholders::_1);
+  node.reset_ = std::bind(&Reset);
 
   // the end.
 

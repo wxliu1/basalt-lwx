@@ -1094,6 +1094,10 @@ void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
   //   return;
 
   static cv::Mat disp_frame;
+  
+#ifdef _RESET_ALOGORITHM_BY_LAMP_ON_  
+  static bool is_reset_alogorithm_by_lamp_on = true;
+#endif
 
   // step1 convert image
   uint16_t *data_in = nullptr;
@@ -1120,6 +1124,11 @@ void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
     // check if lamp is on or off 2023-12-20.
     // if(1)
     {
+      // cv::Mat mask = disp_frame == 255;
+      // int count = cv::countNonZero(mask);
+      // std::cout << "Number of intensity equal to 255 is " << count << std::endl;
+      // // more than 30 pixels with 255 denote lamp on.
+
       cv::Scalar meanValue = cv::mean(disp_frame);
       float MyMeanValue = meanValue.val[0];//.val[0]表示第一个通道的均值
       // std::cout<<"Average of all pixels in image0 with 1st channel is "<< MyMeanValue << std::endl;
@@ -1129,6 +1138,13 @@ void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
         {
           isLampOn_ = true;
           std::cout << std::boolalpha << "lamp on :" << isLampOn_ << std::endl;
+          #ifdef _RESET_ALOGORITHM_BY_LAMP_ON_
+          if(is_reset_alogorithm_by_lamp_on)
+          {
+            reset_();
+            is_reset_alogorithm_by_lamp_on = false;
+          }
+          #endif
         }
         
       }

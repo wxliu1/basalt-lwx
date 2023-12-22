@@ -157,6 +157,7 @@ public:
     std::function<void(double t, const Vector3d &linearAcceleration, const Vector3d &angularVelocity)>inputIMU_;
     std::function<void(bool bl)> zeroVelocity_;
     std::function<void(bool bl)> slowVelocity_;
+    std::function<void(void)> reset_; // reset alogorithm.
 
 private:
     ros::NodeHandle pnh_;

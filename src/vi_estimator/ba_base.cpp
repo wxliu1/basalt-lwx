@@ -321,23 +321,34 @@ void BundleAdjustmentBase<Scalar_>::filterOutliers(Scalar outlier_threshold,
 }
 
 template <class Scalar_>
-void BundleAdjustmentBase<Scalar_>::computeDelta(const AbsOrderMap& marg_order,
+bool BundleAdjustmentBase<Scalar_>::computeDelta(const AbsOrderMap& marg_order,
                                                  VecX& delta) const {
   size_t marg_size = marg_order.total_size;
   delta.setZero(marg_size);
   for (const auto& kv : marg_order.abs_order_map) {
     if (kv.second.second == POSE_SIZE) {
-      BASALT_ASSERT(frame_poses.at(kv.first).isLinearized());
+      // BASALT_ASSERT(frame_poses.at(kv.first).isLinearized());
+      if(!frame_poses.at(kv.first).isLinearized())
+      {
+        return false;
+      }
+
       delta.template segment<POSE_SIZE>(kv.second.first) =
           frame_poses.at(kv.first).getDelta();
     } else if (kv.second.second == POSE_VEL_BIAS_SIZE) {
-      BASALT_ASSERT(frame_states.at(kv.first).isLinearized());
+      // BASALT_ASSERT(frame_states.at(kv.first).isLinearized());
+      if(!frame_states.at(kv.first).isLinearized())
+      {
+        return false;
+      }
       delta.template segment<POSE_VEL_BIAS_SIZE>(kv.second.first) =
           frame_states.at(kv.first).getDelta();
     } else {
       BASALT_ASSERT(false);
     }
   }
+
+  return true;
 }
 
 template <class Scalar_>

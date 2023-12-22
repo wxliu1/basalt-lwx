@@ -116,8 +116,8 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   int optimize_and_marg(const std::map<int64_t, int>& num_points_connected,
                          const std::unordered_set<KeypointId>& lost_landmaks); // change return type from 'void' to 'int' on 2023-11-13.
 
-  void marginalize(const std::map<int64_t, int>& num_points_connected,
-                   const std::unordered_set<KeypointId>& lost_landmaks);
+  bool marginalize(const std::map<int64_t, int>& num_points_connected,
+                   const std::unordered_set<KeypointId>& lost_landmaks); // change return type from 'void' to 'bool',if failed.
   //void optimize();
   int optimize(); // modifid. 2023-11-13
 
