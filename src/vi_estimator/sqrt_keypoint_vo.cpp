@@ -117,15 +117,15 @@ void SqrtKeypointVoEstimator<Scalar_>::Reset()
 {
   if(initialized == true)
   {
-    std::cout << "1 start to reset vio backend" << std::endl;
-    std::unique_lock<std::mutex> lk(vio_m); // 2023-12-21.
-    vio_cv.wait(lk);
+    // std::cout << "1 start to reset vio backend" << std::endl;
+    // std::unique_lock<std::mutex> lk(vio_m); // 2023-12-21.
+    // vio_cv.wait(lk);
 
     isReset_ = true;
   }
   else
   {
-    std::cout << "system is not initialized.\n";
+    std::cout << "system is not initialized, can't reset.\n";
   }
 
   // move to ExcuteReset()

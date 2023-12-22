@@ -219,6 +219,9 @@ void Reset()
 
  */
 
+/*
+ * comment 2023-12-22.
+
   // new method: ensure vio can be reset.
   std::shared_ptr<std::thread> t1;
   t1.reset(new std::thread([&]() {
@@ -236,7 +239,10 @@ void Reset()
     // t1->detach();
   } 
   // the end.
-  
+*/
+  // Make sure it's safe
+  opt_flow_ptr->Reset();
+
 }
 
 void command()
@@ -406,6 +412,8 @@ int main(int argc, char** argv) {
   }
 
   vio->reset_ = std::bind(&Reset); // 2023-11-19.
+
+  opt_flow_ptr->reset_ = std::bind(&basalt::VioEstimatorBase::Reset, vio);
 
   // 2023-11-14
   if (sys_cfg_.use_imu) {

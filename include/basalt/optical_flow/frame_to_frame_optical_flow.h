@@ -191,7 +191,8 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
         SetReset(false);
         
         std::cout << "reset front end.\n";
-        vio_cv.notify_one();
+        // vio_cv.notify_one();
+        reset_();
         
       }
       // reset_mutex.lock(); // 2023-11-19
