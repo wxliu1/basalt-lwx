@@ -188,11 +188,11 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
         OpticalFlowResult::Ptr output_frame;
         while (!output_queue->empty()) output_queue->pop(output_frame); // drain output_queue
 
-        SetReset(false);
-        
         std::cout << "reset front end.\n";
         // vio_cv.notify_one();
         reset_();
+
+        SetReset(false);
         
       }
       // reset_mutex.lock(); // 2023-11-19

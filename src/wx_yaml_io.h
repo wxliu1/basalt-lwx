@@ -41,6 +41,16 @@ struct TYamlIO
     double slow_velocity { 3.0 };
     double zero_velocity { 0.05 };
     double mean_value { 0.0 };
+    
+    bool tks_pro_integration { true };
+    std::string src_ip_address = "192.168.55.28";
+    std::string dest_ip_adderss = "192.168.55.21";
+    bool debug_mode { false };
+    std::string output_data_file = "/home/ita560/docker/data_output/";
+    bool data_output { true };
+    bool data_display { true };
+    bool bag_flag { true };
+    int atp_id { 0 };
 
     void ReadConfiguration();
 #ifdef _NEED_WRITE_YAML    

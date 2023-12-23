@@ -23,6 +23,7 @@
   <depend>nav_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>myodom</depend> <!--add this module to ensure find it before compile-->
+  <depend>atp_info</depend>
 
   <export>
   </export>

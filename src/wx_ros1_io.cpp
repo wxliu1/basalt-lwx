@@ -154,12 +154,16 @@ void CRos1IO::StereoCb(const sm::ImageConstPtr& image0_ptr,
 {
   //std::cout << "received images.\n";
 
+#ifdef _IS_FORWARD_
+  if(isForward_ && !isForward_()) return ;
+#endif
+
   static u_int64_t prev_t_ns = 0;
   
   u_int64_t t_ns = image0_ptr->header.stamp.nsec +
     image0_ptr->header.stamp.sec * 1e9;
 
-    if(prev_t_ns == t_ns) // 2023-12-18.
+    if(prev_t_ns >= t_ns) // 2023-12-18.
     {
       return ;
     }
@@ -247,6 +251,10 @@ void CRos1IO::StereoCb(const sm::ImageConstPtr& image0_ptr,
 
 void CRos1IO::imu_callback(const sensor_msgs::ImuConstPtr& imu_msg) const
 {
+#ifdef _IS_FORWARD_
+  if(isForward_ && !isForward_()) return ;
+#endif
+
   // double t = imu_msg->header.stamp.sec + imu_msg->header.stamp.nsec * (1e-9);
   double dx = imu_msg->linear_acceleration.x;
   double dy = imu_msg->linear_acceleration.y;
@@ -1048,6 +1056,11 @@ double publish_velocity = curr_velocity;
       
       // publish velocity, period odom and total odom.
       pub_my_odom_.publish(odom_msg);
+
+      if(add_odom_frame_)
+      {
+        add_odom_frame_(publish_velocity,total_odom,confidence_coefficient);
+      }
 
       // std::cout << "confidence : " << data->bias_accel.transpose() << "  confidence coefficient:" << confidence_coefficient << std::endl; // for test.
     }

@@ -113,6 +113,24 @@ SqrtKeypointVoEstimator<Scalar_>::SqrtKeypointVoEstimator(
 }
 
 template <class Scalar_>
+inline bool SqrtKeypointVoEstimator<Scalar_>::GetResetAlgorithm()
+{
+  return isResetAlgorithm_;
+}
+
+template <class Scalar_>
+void SqrtKeypointVoEstimator<Scalar_>::SetResetAlgorithm(bool bl)
+{
+  if(bl && initialized == false) 
+  {
+    std::cout << "system is not initialized, can't set reset algorithm flag.\n";
+    return ;
+  }
+
+  isResetAlgorithm_ = bl;
+}
+
+template <class Scalar_>
 void SqrtKeypointVoEstimator<Scalar_>::Reset()
 {
   if(initialized == true)
@@ -194,7 +212,6 @@ void SqrtKeypointVoEstimator<Scalar_>::ExcuteReset()
 
   drain_input_queues();
 
-  isResetAlgorithm_ = true;
 
   // TODO:
   // stats_all_.Reset();
@@ -274,6 +291,7 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
         SetReset(false);
         add_pose = false;
         prev_frame = nullptr;
+        SetResetAlgorithm(false);
         std::cout << "reset backend thread.\n";
 
       }
@@ -857,8 +875,8 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
 
   stats_sums_.add("measure", t_total.elapsed()).format("ms"); // 统计measure函数消耗的时间
 
-  if(g_imu->UseImuPose()) // 2023-11-20 10:22
-  // if(nTrackedPoints < 20|| g_imu->UseImuPose()) // test on 2023-12-20.
+  // if(g_imu->UseImuPose()) // 2023-11-20 10:22
+  if(nTrackedPoints < 6 || g_imu->UseImuPose()) // test on 2023-12-20.
   {
     std::cout << "begin reset algorithm.\n";
     reset_(); 

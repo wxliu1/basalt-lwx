@@ -20,6 +20,17 @@ coefficient: 1.00
 slow_velocity: 2 # 0.01 #3
 zero_velocity: 0.061
 mean_value: 68.1
+
+tks_pro_integration: false
+src_ip_address: 192.168.55.28
+dest_ip_adderss: 192.168.55.21
+debug_mode: false
+output_data_file: /root/lwx_dataset/data_output/
+data_output: true
+data_display: true
+bag_flag: true
+atp_id: 0
+
 confidence_interval: 
    tracked_points: [30]
    confidence_levels: [0.0]

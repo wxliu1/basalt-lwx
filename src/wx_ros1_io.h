@@ -50,6 +50,8 @@ using std::placeholders::_1;
 
 // #define _NOISE_SUPPRESSION_
 
+// #define _IS_FORWARD_
+
 namespace wx {
 
 using Vector2d = Eigen::Vector2d;
@@ -158,6 +160,9 @@ public:
     std::function<void(bool bl)> zeroVelocity_;
     std::function<void(bool bl)> slowVelocity_;
     std::function<void(void)> reset_; // reset alogorithm.
+    // std::function<void(double speed_, double calc_odom_result_, float confidence_coefficient_)>add_odom_frame_;
+    std::function<void(double, double, float)>add_odom_frame_;
+    std::function<bool(void)> isForward_;
 
 private:
     ros::NodeHandle pnh_;

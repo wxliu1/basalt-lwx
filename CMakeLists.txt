@@ -61,7 +61,8 @@ find_package(catkin REQUIRED COMPONENTS
   # the end.
   # pcl_ros
   myodom
-
+  atp_info
+  
 )
 
 find_package(yaml-cpp REQUIRED)

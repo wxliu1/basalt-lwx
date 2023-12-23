@@ -55,7 +55,7 @@ public:
         debug_mode = false;
         atp_info_init();
         vio_info_init();
-        
+
         client_len = sizeof(client_addr);
         udp_sockfd_ = socket(AF_INET, SOCK_DGRAM, 0);
         if (udp_sockfd_ < 0) {
@@ -74,7 +74,6 @@ public:
         addr.sin_port = htons(50523);
         addr.sin_addr.s_addr = inet_addr(dest_ip);
         // addr.sin_addr.s_addr = inet_addr("10.21.0.217");
-        
         udp_recv_thread = std::thread(&vio_udp::UDP_recv, this);
     }
 
@@ -96,9 +95,9 @@ public:
     }
 
     void vio_udp_send(uint16_t speed,double odom,double calc_odom,bool is_valid = true){
-        if(is_valid)
+        if(is_valid)//有效，原因给0
             pack_info(speed,odom,calc_odom,0);
-        else
+        else//无效，原因给4
             pack_info(speed,odom,calc_odom,4);
         if(debug_mode){
             unsigned char* bytePtr = reinterpret_cast<unsigned char*>(&vio_info_);
@@ -127,7 +126,7 @@ private:
         atp_info_.beacon_odom = 0;
         atp_info_.beacon_id = 0;
     }
-    
+
     void vio_info_init(){
         vio_info_.info_type = htons(0xFFEE);
         vio_info_.vio_id = htons(vio_id_);
@@ -199,6 +198,10 @@ private:
         vio_info_.vio_speed = htons(speed);
         vio_info_.vio_period_odom = htons((uint16_t)odom); 
         vio_info_.vio_calc_odom = htonl((uint32_t)calc_odom); // 保存累计里程
+        if(valid == 0)//有效
+            vio_info_.is_valid = 1;//给1
+        else
+            vio_info_.is_valid = 0;//给0
         vio_info_.invalid_status = htonl(valid);
         //printf("period_signal = %d,vio_speed = %d,vio_period_odom = %lf,vio_calc_odom = %lf\n",period_signal_,speed,odom,calc_odom_);
         // vio_info_.CRC = CRC();

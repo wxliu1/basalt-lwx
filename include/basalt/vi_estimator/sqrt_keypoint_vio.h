@@ -210,6 +210,8 @@ class SqrtKeypointVioEstimator : public VioEstimatorBase,
   }
 
   void Reset() {} // 2023-11-19.
+  virtual inline bool GetResetAlgorithm() { return true; }
+  virtual void SetResetAlgorithm(bool bl) {}
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 

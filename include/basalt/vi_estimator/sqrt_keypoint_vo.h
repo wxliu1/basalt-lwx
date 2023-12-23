@@ -205,6 +205,8 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
 
   void SetFirstVisualPose(); // 2023-11-18.
   void Reset(); // 2023-11-19.
+  virtual inline bool GetResetAlgorithm();
+  virtual void SetResetAlgorithm(bool bl);
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -262,7 +264,7 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   int marg_frame_index{-1};
   // the end.
   // 2023-11-21
-  bool isResetAlgorithm_ { false };
+  std::atomic<bool> isResetAlgorithm_ { false };
   SE3 T_w_i_prev;
   // the end.
 

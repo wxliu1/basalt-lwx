@@ -131,6 +131,8 @@ class VioEstimatorBase {
   virtual Sophus::SE3d getT_w_i_init() = 0;
   virtual void setT_w_i_init(Sophus::SE3d Twi) = 0; // 2023-11-13.
   virtual void Reset() = 0; // 2023-11-19.
+  virtual inline bool GetResetAlgorithm() = 0;
+  virtual void SetResetAlgorithm(bool bl) = 0;
 
   // Legacy functions. Should not be used in the new code. 遗留函数。不应该在新代码中使用
   virtual void setMaxStates(size_t val) = 0;

@@ -24,6 +24,7 @@ void TYamlIO::ReadConfiguration()
 
   // std::string config_file = "/root/stereo3_ws/install/share/stereo3/config/sys.yaml";
   std::string config_file = "/root/dev/stereo3_ros1_ws/install/share/stereo3/config/sys.yaml";
+  std::cout << "sys.yaml: " << config_file << std::endl;
   if(access(config_file.c_str(), 0) != 0)
   {
     // '!= 0' indicate that file do not exist.
@@ -53,6 +54,16 @@ void TYamlIO::ReadConfiguration()
     config["slow_velocity"] = slow_velocity;
     config["zero_velocity"] = zero_velocity;
     config["mean_value"] = mean_value;
+
+    config["tks_pro_integration"] = tks_pro_integration;
+    config["src_ip_address"] = src_ip_address;
+    config["dest_ip_adderss"] = dest_ip_adderss;
+    config["debug_mode"] = debug_mode;
+    config["output_data_file"] = output_data_file;
+    config["data_output"] = data_output;
+    config["data_display"] = data_display;
+    config["bag_flag"] = bag_flag;
+    config["atp_id"] = atp_id;
 /*
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
                               0.0, 1.0, 0.0, 0.0,
@@ -92,6 +103,8 @@ void TYamlIO::ReadConfiguration()
     use_double = config["use_double"].as<bool>();
     dt_ns = config["dt_ns"].as<long>();
     fps = config["fps"].as<int>();
+
+    // if(config["coefficient"].Type() == YAML::NodeType::Scalar)
     coefficient = config["coefficient"].as<double>();
 
     if(config["slow_velocity"].Type() == YAML::NodeType::Scalar)
@@ -102,6 +115,34 @@ void TYamlIO::ReadConfiguration()
 
     if(config["mean_value"].Type() == YAML::NodeType::Scalar)
     mean_value = config["mean_value"].as<double>();
+
+    // for tks.
+    if(config["tks_pro_integration"].Type() == YAML::NodeType::Scalar)
+    tks_pro_integration = config["tks_pro_integration"].as<bool>();
+
+    if(config["src_ip_address"].Type() == YAML::NodeType::Scalar)
+    src_ip_address = config["src_ip_address"].as<std::string>();
+
+    if(config["dest_ip_adderss"].Type() == YAML::NodeType::Scalar)
+    dest_ip_adderss = config["dest_ip_adderss"].as<std::string>();
+
+    if(config["debug_mode"].Type() == YAML::NodeType::Scalar)
+    debug_mode = config["debug_mode"].as<bool>();
+
+    if(config["output_data_file"].Type() == YAML::NodeType::Scalar)
+    output_data_file = config["output_data_file"].as<std::string>();
+
+    if(config["data_output"].Type() == YAML::NodeType::Scalar)
+    data_output = config["data_output"].as<bool>();
+
+    if(config["data_display"].Type() == YAML::NodeType::Scalar)
+    data_display = config["data_display"].as<bool>();
+
+    if(config["bag_flag"].Type() == YAML::NodeType::Scalar)
+    bag_flag = config["bag_flag"].as<bool>();
+
+    if(config["atp_id"].Type() == YAML::NodeType::Scalar)
+    atp_id = config["atp_id"].as<int>();
 
     // read imu_cam extrinsic
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,

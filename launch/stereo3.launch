@@ -1,15 +1,15 @@
 <launch>
 	<!-- <rosparam command="load" file="$(find viobot)/config/viobot.yaml" />   -->
     <node name="stereo3" pkg="stereo3" type="stereo3" output="screen" respawn="true">
-        <param name="tks_pro_integration" type="bool" value="true" />
-        <param name="src_ip_address" type="string" value="192.168.55.28" />
-        <param name="dest_ip_adderss" type="string" value="192.168.55.21" />
-        <param name="debug_mode" type="bool" value="false" />
-        <param name="output_data_file" type="string" value="/home/ita560/docker/data_output/" />
-        <param name="data_output" type="bool" value="true" />
-        <param name="data_display" type="bool" value="true" />
-        <param name="bag_flag" type="bool" value="true" />
-        <param name="atp_id" type="int" value="0" />
+        <!-- <param name="tks_pro_integration" type="bool" value="true" /> -->
+        <!-- <param name="src_ip_address" type="string" value="192.168.55.28" /> -->
+        <!-- <param name="dest_ip_adderss" type="string" value="192.168.55.21" /> -->
+        <!-- <param name="debug_mode" type="bool" value="false" /> -->
+        <!-- <param name="output_data_file" type="string" value="/home/ita560/docker/data_output/" /> -->
+        <!-- <param name="data_output" type="bool" value="true" /> -->
+        <!-- <param name="data_display" type="bool" value="true" /> -->
+        <!-- <param name="bag_flag" type="bool" value="true" /> -->
+        <!-- <param name="atp_id" type="int" value="0" />  -->
         <!-- <param name="odom_calc_sec_flag" type="bool" value="true" /> -->
     </node>
 </launch>

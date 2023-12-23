@@ -64,6 +64,22 @@ public:
         }
     }
 
+    void change_ends(){
+        std::lock_guard<std::mutex> lock(mtx); // 加锁
+        std::ifstream file(fname);
+        if (!file.is_open()) {
+            std::cout << "File does not exist!" << std::endl;
+            return ;
+        }
+        else {
+            std::ofstream outFile(fname, std::ios::app);
+            // ********""写入两行数据*********
+            outFile << "change_ends" <<  std::endl;
+            //数字需转为字符串进行写入,csv文件结束一行写入需要"\n"或者endl进行换行
+            outFile.close();
+        }
+    }
+
 private:
     std::string fname;
     std::mutex mtx;

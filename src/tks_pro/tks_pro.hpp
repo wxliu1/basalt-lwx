@@ -5,7 +5,8 @@
 #include <sensor_msgs/Image.h>
 
 #include "vio_udp.hpp"
-#include "atp_info/atp.h"
+// #include "atp_info/atp.h"
+#include <atp_info/atp.h>
 #include "data_output.hpp"
 
 #include <deque>
@@ -15,11 +16,59 @@
 #include <ctime>
 #include <string>
 
+#include "../wx_yaml_io.h"
 
 class Tks_pro{
 public:
+    Tks_pro(ros::NodeHandle& nh, const TYamlIO &yaml) : yaml_(yaml) {
+         ROS_INFO("=====================version 2023-12-23=====================");
+        // 调用函数获取当前系统时间并输出
+        std::string currentTimeString = getCurrentSystemTime();
+        line_vio = 1,line_atp = 1;
+
+        vio_udp_ = std::make_shared<vio_udp>(yaml_.src_ip_address.c_str(),yaml_.dest_ip_adderss.c_str());  
+
+        vio_udp_->debug_mode = yaml_.debug_mode;
+
+        std::string output_data_file;
+        output_data_file = yaml_.output_data_file + currentTimeString + "_data_output.csv";
+        std::cout << "output data file: " << output_data_file << std::endl;
+        data_output_flag = yaml_.data_output;
+        data_display = yaml_.data_display;
+        if(data_output_flag)
+            data_output = std::make_shared<Data_output>(output_data_file);
+        // nh.param<bool>("odom_calc_sec_flag",odom_calc_sec_flag,false);
+        odom_calc_sec_flag = false;
+        bag_flag = yaml_.bag_flag;
+        if(bag_flag)//是否是数据包模式，数据包模式可以直接读取atp话题的数据
+            sub_atp_info = nh.subscribe("/atp_info", 2, &Tks_pro::atp_callback,this);
+        else//不是数据包模式则通过UDP协议接收ATP信息，打包ATP数据，保存并且发出话题消息
+            atp_info_pub = nh.advertise<atp_info::atp>("/atp_info",5);
+        atp_info_p.atp_speed = 0,atp_info_p.atp_period_odom = 0,atp_info_p.atp_calc_odom = 0,atp_info_p.beacon_id = 0,atp_info_p.beacon_odom = 0;
+	    std::string odom_topic = "/my_odom";
+        // nh.param<std::string>("odom_topic",odom_topic,"/my_odom");
+        int algo_freq = 50;
+        // nh.param<int>("algo_freq",algo_freq,50);
+        count_freq = algo_freq / 5;
+        // nh.param<int>("odom_times",odom_times,3);
+        odom_times = 3;
+        // nh.param<int>("atp_times",atp_times,6);
+        atp_times = 6;
+        // nh.param<int>("atp_id",atp_id_num,1);
+        atp_id_num = yaml_.atp_id;
+        speed.clear();
+        avg_speed.clear();
+        odom_callback_flag = 0,udp_recv_flag = 0;
+        confidence_coefficient = 0.0;
+        change_ends_flag = false;
+        is_forward = false;
+
+        // pub_my_odom_ = nh.subscribe(odom_topic, 2, &Tks_pro::odom_callback,this);
+        timer_UDP_send = nh.createTimer(ros::Duration(0.2), std::bind(&Tks_pro::UDP_send, this, std::placeholders::_1));
+    }
+
     Tks_pro(ros::NodeHandle& nh){
-        ROS_INFO("=====================version 2023-12-18=====================");
+        ROS_INFO("=====================version 2023-12-22=====================");
         // 调用函数获取当前系统时间并输出
         std::string currentTimeString = getCurrentSystemTime();
         line_vio = 1,line_atp = 1;
@@ -56,7 +105,9 @@ public:
         avg_speed.clear();
         odom_callback_flag = 0,udp_recv_flag = 0;
         confidence_coefficient = 0.0;
-        
+        change_ends_flag = false;
+        is_forward = false;
+
         // pub_my_odom_ = nh.subscribe(odom_topic, 2, &Tks_pro::odom_callback,this);
         timer_UDP_send = nh.createTimer(ros::Duration(0.2), std::bind(&Tks_pro::UDP_send, this, std::placeholders::_1));
     }
@@ -73,6 +124,8 @@ public:
         odom_callback_flag = 0;
         vio_udp_odom_read.unlock();
     }
+
+    inline bool IsForward() {return is_forward; }
 
 private:
 
@@ -209,25 +262,45 @@ private:
         ROS_INFO("vio_udp_->atp_info_.ATP_id = %d",vio_udp_->atp_info_.ATP_id);
         error_calc(atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom,
                    vio_speed_calc,(uint16_t)period_odom,(uint32_t)calc_odom_result);
+        if(vio_speed_calc > 3000) confidence_coefficient = 0;//2023-12-21
         if(confidence_coefficient < 1){//视觉数据无效
             ROS_INFO("============================confidence_coefficient error ==================================");
             vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,false);
             if(vio_udp_->atp_info_.ATP_id == atp_id_num){//在这个方向跑才存日志
+                change_ends_flag = false;
+                is_forward = true;
                 if(data_output_flag)
                     data_output->write_data(line_vio++,atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom,
                                             vio_speed_calc,(uint16_t)period_odom,(uint32_t)calc_odom_result,
                                             speed_error,peroid_odom_error,calc_odom_error,
                                             atp_info_p.beacon_id,atp_info_p.beacon_odom,0);
             }
+            else{
+                is_forward = false;
+                if(change_ends_flag == false){
+                    change_ends_flag = true;
+                    data_output->change_ends();
+                }
+            }
         }
         else{//视觉数据有效
-            vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,true);
             if(vio_udp_->atp_info_.ATP_id == atp_id_num){//在这个方向跑才存日志
+                vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,true);
+                change_ends_flag = false;
+                is_forward = true;
                 if(data_output_flag)
                     data_output->write_data(line_vio++,atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom,
                                             vio_speed_calc,(uint16_t)period_odom,(uint32_t)calc_odom_result,
                                             speed_error,peroid_odom_error,calc_odom_error,
                                             atp_info_p.beacon_id,atp_info_p.beacon_odom,1);
+            }
+            else{//反向跑直接置信位给0
+                vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,false);
+                is_forward = false;    
+                if(change_ends_flag == false){
+                    change_ends_flag = true;
+                    data_output->change_ends();
+                }
             }
         }
         if(data_display){
@@ -270,7 +343,7 @@ private:
             vio_speed_calc = 0;
             period_odom = 0.0;
         }
-        if(udp_recv_flag > atp_times){
+        if(udp_recv_flag > atp_times){//没收到数据，将一些东西置零
             atp_info_p.atp_speed = 0;
             atp_info_p.atp_period_odom = 0;
             vio_udp_->atp_info_.ATP_id = 0;
@@ -311,6 +384,9 @@ private:
     int odom_times,atp_times;
     int odom_callback_flag,udp_recv_flag;
     int atp_id_num;
+    bool change_ends_flag;
+    bool is_forward;
+    TYamlIO yaml_;
 };
 
 

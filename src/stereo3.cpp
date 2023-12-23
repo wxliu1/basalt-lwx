@@ -67,6 +67,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "imu/imu_process.h"
 #include <signal.h>
 
+#include "tks_pro/tks_pro.hpp"
+
+#include <unistd.h>
+#include <fcntl.h>
+
 using namespace wx;
 
 #define _SHOW_POINTS
@@ -121,6 +126,9 @@ basalt::VioDatasetPtr vio_dataset;
 basalt::VioConfig vio_config;
 basalt::OpticalFlowBase::Ptr opt_flow_ptr;
 basalt::VioEstimatorBase::Ptr vio;
+
+std::shared_ptr<Tks_pro> tks_pro;
+bool is_forward = false;
 
 // 2023-11-13
 ImuProcess* g_imu = nullptr;
@@ -241,15 +249,26 @@ void Reset()
   // the end.
 */
   // Make sure it's safe
-  opt_flow_ptr->Reset();
+  if(!vio->GetResetAlgorithm())
+  {
+    vio->SetResetAlgorithm(true);
+    if(vio->GetResetAlgorithm())
+    opt_flow_ptr->Reset();
+  }
+  else
+  {
+    std::cout << "reset alogorithm is not complete yet." << std::endl;
+  }
+  
 
 }
 
 void command()
 {
+  std::cout << "1 command()" << std::endl;
   while (1)
   {
-
+  #if 1//def _KEY_PRESS_
     char c = getchar();
     if (c == 'r')
     {
@@ -257,14 +276,76 @@ void command()
       Reset();
       std::cout << "reset command over." << std::endl;
     }
-
+  #endif
 
     std::chrono::milliseconds dura(500);
     std::this_thread::sleep_for(dura);
   }
+
+  std::cout << "2 command()" << std::endl;
+}
+
+void reset_algorithm_thread()
+{
+  while (1)
+  {
+  #if 1
+    if(tks_pro.get() && tks_pro->IsForward())
+    {
+      if(is_forward == false)
+      {
+        is_forward = true;
+        std::cout << "because of 'is_forward' changed from false to true, we start to reset algorithm." << std::endl;
+        Reset();
+      }
+    }
+    else
+    {
+      if(is_forward)
+      {
+        is_forward = false;
+      }
+    }
+  #endif
+
+    std::chrono::milliseconds dura(10);
+    std::this_thread::sleep_for(dura);
+  }
+}
+
+static int check_pid_lock()
+{
+	int fd;
+	pid_t id;
+	struct flock lk;
+	char fname[128];
+
+	// sprintf(fname, "./lock/stereo3.pid");
+	sprintf(fname, "./stereo3.pid");
+	if ((fd = open(fname, O_CREAT | O_WRONLY, 0666)) < 0) {
+		// log(LOG_ERR, "Fail open %s\n", fname);
+		return -1;
+	}
+
+	lk.l_type = F_WRLCK;
+	lk.l_start = 0;
+	lk.l_len = 0;
+	lk.l_whence = SEEK_SET;
+	if (fcntl(fd, F_SETLK, &lk) == -1) {
+		// log(LOG_ERR, "Fail lock %s\n", fname);
+		return -1;
+	}
+	id = getpid();
+	if (write(fd, &id, sizeof(pid_t)) != sizeof(pid_t)) {
+		// log(LOG_ERR, "Fail write PID to %s\n", fname);
+		return -1;
+	}
+	return 0;
 }
 
 int main(int argc, char** argv) {
+
+  if (check_pid_lock()) return -1;
 
   // 注册中断信号处理函数
   //signal(SIGINT, sigintHandler); // 2023-11-11
@@ -279,6 +360,10 @@ int main(int argc, char** argv) {
   keyboard_command_process = std::thread(command);
   // keyboard_command_process.join();
 
+  std::thread reset_process;
+  reset_process = std::thread(reset_algorithm_thread);
+  // reset_process.join();
+
   // int *p = NULL;
   // std::cout<<*p<<std::endl;
 
@@ -287,11 +372,12 @@ int main(int argc, char** argv) {
   // 2023-11-10
   struct TYamlIO yaml;
   yaml.ReadConfiguration();
-#ifdef _VERIFY_CONFIG_FILE  
+ 
   std::cout << "calib_path=" << yaml.cam_calib_path << std::endl
     << "config_path=" << yaml.config_path << std::endl
-    << "dt_ns = " << yaml.dt_ns << std::endl;
-
+    << "dt_ns = " << yaml.dt_ns << std::endl
+    << "output_data_file = " << yaml.output_data_file << std::endl;
+#ifdef _VERIFY_CONFIG_FILE 
   int cnt = yaml.vec_tracked_points.size();
   std::string strConfidenceInterval = "tracked_points:[";
   for(int i = 0; i < cnt; i++)
@@ -428,7 +514,12 @@ int main(int argc, char** argv) {
 
   // wx::CRos1IO node{ros::NodeHandle{"~"}, yaml.use_imu, yaml.fps, yaml.vec_tracked_points, yaml.vec_confidence_levels, yaml.dt_ns};
   // wx::CRos1IO node(ros::NodeHandle{"~"}, yaml); // it's ok.
+/*
+ * comment 2023-12-23.  
   wx::CRos1IO node {ros::NodeHandle{"~"}, yaml };
+*/
+  ros::NodeHandle n("~");
+  wx::CRos1IO node{n, yaml};
 
   node.inputIMU_ = std::bind(&ImuProcess::inputIMU, &imu, std::placeholders::_1, 
     std::placeholders::_2, std::placeholders::_3);
@@ -444,6 +535,14 @@ int main(int argc, char** argv) {
   node.reset_ = std::bind(&Reset);
 
   // the end.
+
+  if(yaml.tks_pro_integration){
+    tks_pro = std::make_shared<Tks_pro>(n, yaml);
+    node.add_odom_frame_ = std::bind(&Tks_pro::add_odom_frame, tks_pro, std::placeholders::_1, 
+      std::placeholders::_2, std::placeholders::_3);
+
+    node.isForward_ = std::bind(&Tks_pro::IsForward, tks_pro);
+  }
 
   // step 6: 创建图像和imu线程输入数据
 /*
