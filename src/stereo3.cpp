@@ -269,8 +269,13 @@ void command()
   while (1)
   {
   #if 1//def _KEY_PRESS_
-    char c = getchar();
+    // char c = getchar();
+    // std::string strInput;
+    // std::cin >> strInput;
+    char c;
+    std::cin >> c;
     if (c == 'r')
+    // if (strInput == "reboot stereo3")
     {
       std::cout << "press 'r' to reset algorithm" << std::endl;
       Reset();

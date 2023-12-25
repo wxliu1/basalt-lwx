@@ -9,10 +9,10 @@ while true; do
     if [ $PRO_NOW -eq 0 ]; then
         echo " reboot stereo3... "
         cd $BASEDIR
-        ./stereo3
-    #else
-        #echo "`date`  stereo3 is running..."
+        ./stereo31  &
+    else
+        echo "`date`  stereo3 is running..."
     fi
-    sleep 0.01
+    sleep 3
 
 done
