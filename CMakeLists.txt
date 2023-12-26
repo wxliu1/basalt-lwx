@@ -4,19 +4,40 @@ project(stereo3)
 
 add_definitions(-D_WX_TEST) # define '_WX_TEST' macro
 # add_compile_definitions(_OPEN_CV_SHOW_=1)
+
+# if you want to see all patches, please open the following line.
 # add_compile_definitions(SHOW_FLOW_PATCHES)
 add_definitions(-DSHOW_TRACKED_POINTS)
 
+
+# if atp.msg contain atp_id or not, please turn ON or OFF the option 'ADD_ATP_ID'.
+
+# option(ADD_ATP_ID "Set to ON if atp.msg contain atp_id" ON)
+# if(ADD_ATP_ID)
+#   message(STATUS "***---ADD_ATP_ID is ON")
+#   add_compile_definitions(_ADD_ATP_ID_)
+# else()
+#   message(STATUS "***---ADD_ATP_ID is OFF")
+# endif()
+# add_compile_definitions(_ADD_ATP_ID_)
+
 # if you want to use noise suppression, please open the two lines below.
-option(USE_NOISE_SUPPRESSION "Set to ON if you are using noise suppression" OFF)
+# i find it seems that option can not use prefix with "USE_", so i change 'USE_NOISE_SUPPRESSION' to 'OPTION_NOISE_SUPPRESSION'.
+# further, it should remove 'build' and 'devel' directories, and recompile the project to take effect.
+# option(OPTION_NOISE_SUPPRESSION "Set to ON if you are using noise suppression" OFF) # ON or OFF
+option(USE_NOISE_SUPPRESSION "Set to ON if you are using noise suppression" OFF) # ON or OFF
 if(USE_NOISE_SUPPRESSION)
+  message(STATUS "***---USE_NOISE_SUPPRESSION is ON.")
   add_compile_definitions(_NOISE_SUPPRESSION_)
   add_compile_definitions(_GAUSSIAN_BlUR_)
+else()
+  message(STATUS "***---USE_NOISE_SUPPRESSION is OFF.")
 endif()
 
 # publish velocity
 option(PUBLISH_VELOCITY "Set to ON if you are publishing velocity" ON) # ON or OFF
 if(PUBLISH_VELOCITY)
+    message(STATUS "***---PUBLISH_VELOCITY is ON")
     add_compile_definitions(_PUBLISH_VELOCITY_)
 endif()
 

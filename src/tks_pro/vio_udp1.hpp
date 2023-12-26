@@ -35,7 +35,7 @@ typedef struct{
 
 typedef struct{
     uint16_t info_type; //信息类型，暂时固定EEFF
-    uint16_t atp_id; //ATP设备源ID 激活端ATP的ID 1：代表1端，2代表2端。
+    uint16_t ATP_id; //ATP设备源ID 激活端ATP的ID 1：代表1端，2代表2端。
     uint16_t cur_station_id; //当前站号ID 在到达下一站并停稳后更新。出站运行在区间过程中此站号不变。
     uint16_t next_station_id; //下一站站号ID 在到达下一站并停稳后更新。出站运行在区间过程中此站号不变。但会基于运行计划调整。
     uint32_t beacon_id;//信标ID 视觉惯导检查信标ID变化，获取信标间里程数据。在未收到新的信标时发送上一个信标ID。
@@ -119,7 +119,7 @@ private:
     }
 
     void atp_info_init(){
-        atp_info_.atp_id = 0;
+        atp_info_.ATP_id = 0;
         atp_info_.atp_speed = 0;
         atp_info_.atp_period_odom = 0;
         atp_info_.atp_calc_odom = 0;
@@ -167,7 +167,7 @@ private:
             ATP_info* atp_info_ptr = (ATP_info*)rebuf;
             read_atp_info.lock();
             atp_info_.info_type = ntohs(atp_info_ptr->info_type);
-            atp_info_.atp_id = ntohs(atp_info_ptr->atp_id);
+            atp_info_.ATP_id = ntohs(atp_info_ptr->ATP_id);
             atp_info_.cur_station_id = ntohs(atp_info_ptr->cur_station_id);
             atp_info_.next_station_id = ntohs(atp_info_ptr->next_station_id);
             atp_info_.beacon_id = ntohl(atp_info_ptr->beacon_id);

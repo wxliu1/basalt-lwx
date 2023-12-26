@@ -21,7 +21,7 @@
 class Tks_pro{
 public:
     Tks_pro(ros::NodeHandle& nh, const TYamlIO &yaml) : yaml_(yaml) {
-         ROS_INFO("=====================version 2023-12-26=====================");
+         ROS_INFO("=====================version 2023-12-23=====================");
         // 调用函数获取当前系统时间并输出
         std::string currentTimeString = getCurrentSystemTime();
         line_vio = 1,line_atp = 1;
@@ -44,18 +44,26 @@ public:
             sub_atp_info = nh.subscribe("/atp_info", 2, &Tks_pro::atp_callback,this);
         else//不是数据包模式则通过UDP协议接收ATP信息，打包ATP数据，保存并且发出话题消息
             atp_info_pub = nh.advertise<atp_info::atp>("/atp_info",5);
-        atp_info_init();
+        atp_info_p.atp_speed = 0,atp_info_p.atp_period_odom = 0,atp_info_p.atp_calc_odom = 0,atp_info_p.beacon_id = 0,atp_info_p.beacon_odom = 0;
+	    std::string odom_topic = "/my_odom";
+        // nh.param<std::string>("odom_topic",odom_topic,"/my_odom");
+        int algo_freq = 50;
+        // nh.param<int>("algo_freq",algo_freq,50);
+        count_freq = algo_freq / 5;
         // nh.param<int>("odom_times",odom_times,3);
         odom_times = 3;
         // nh.param<int>("atp_times",atp_times,6);
         atp_times = 6;
         // nh.param<int>("atp_id",atp_id_num,1);
         atp_id_num = yaml_.atp_id;
+        speed.clear();
+        avg_speed.clear();
         odom_callback_flag = 0,udp_recv_flag = 0;
         confidence_coefficient = 0.0;
         change_ends_flag = false;
         is_forward = false;
 
+        // pub_my_odom_ = nh.subscribe(odom_topic, 2, &Tks_pro::odom_callback,this);
         timer_UDP_send = nh.createTimer(ros::Duration(0.2), std::bind(&Tks_pro::UDP_send, this, std::placeholders::_1));
     }
 
@@ -84,15 +92,23 @@ public:
             sub_atp_info = nh.subscribe("/atp_info", 2, &Tks_pro::atp_callback,this);
         else//不是数据包模式则通过UDP协议接收ATP信息，打包ATP数据，保存并且发出话题消息
             atp_info_pub = nh.advertise<atp_info::atp>("/atp_info",5);
-        atp_info_init();
+        atp_info_p.atp_speed = 0,atp_info_p.atp_period_odom = 0,atp_info_p.atp_calc_odom = 0,atp_info_p.beacon_id = 0,atp_info_p.beacon_odom = 0;
+	    std::string odom_topic;
+        nh.param<std::string>("odom_topic",odom_topic,"/my_odom");
+        int algo_freq;
+        nh.param<int>("algo_freq",algo_freq,50);
+        count_freq = algo_freq / 5;
         nh.param<int>("odom_times",odom_times,3);
         nh.param<int>("atp_times",atp_times,6);
         nh.param<int>("atp_id",atp_id_num,1);
+        speed.clear();
+        avg_speed.clear();
         odom_callback_flag = 0,udp_recv_flag = 0;
         confidence_coefficient = 0.0;
         change_ends_flag = false;
         is_forward = false;
 
+        // pub_my_odom_ = nh.subscribe(odom_topic, 2, &Tks_pro::odom_callback,this);
         timer_UDP_send = nh.createTimer(ros::Duration(0.2), std::bind(&Tks_pro::UDP_send, this, std::placeholders::_1));
     }
 
@@ -112,17 +128,6 @@ public:
     inline bool IsForward() {return is_forward; }
 
 private:
-    void atp_info_init(){
-        #ifdef _ADD_ATP_ID_
-        atp_info_p.atp_id = 0;
-        #endif
-        atp_info_p.atp_speed = 0;
-        atp_info_p.atp_period_odom = 0;
-        atp_info_p.atp_calc_odom = 0;
-        atp_info_p.beacon_id = 0;
-        atp_info_p.beacon_odom = 0;
-    }
-
 
     std::string getCurrentSystemTime() {
         // 获取当前系统时间点
@@ -140,9 +145,6 @@ private:
     }
 
     void atp_callback(const atp_info::atpPtr &msg){
-        #ifdef _ADD_ATP_ID_
-        atp_info_p.atp_id = msg->atp_id;
-        #endif
         atp_info_p.atp_speed = msg->atp_speed;
         atp_info_p.atp_period_odom = msg->atp_period_odom;
         atp_info_p.atp_calc_odom = msg->atp_calc_odom;
@@ -155,9 +157,6 @@ private:
         ROS_INFO("atp_info_publish");
         vio_udp_->read_atp_info.lock();
         atp_info_p.header.stamp = ros::Time::now();
-        #ifdef _ADD_ATP_ID_
-        atp_info_p.atp_id = vio_udp_->atp_info_.atp_id;
-        #endif
         atp_info_p.cur_station_id = vio_udp_->atp_info_.cur_station_id;
         atp_info_p.next_station_id = vio_udp_->atp_info_.next_station_id;
         atp_info_p.beacon_id = vio_udp_->atp_info_.beacon_id;
@@ -170,17 +169,104 @@ private:
         udp_recv_flag = 0;
     }
 
+    double calc_odom(const nav_msgs::OdometryPtr &msg){
+        // ROS_INFO("odom_callback");
+        static double last_X = 0.0,last_Y = 0.0,last_Z = 0.0;
+        double d_x = msg->pose.pose.position.x - last_X;
+        double d_y = msg->pose.pose.position.y - last_Y;
+        double d_z = msg->pose.pose.position.z - last_Z;
+        last_X = msg->pose.pose.position.x;
+        last_Y = msg->pose.pose.position.y;
+        last_Z = msg->pose.pose.position.z;
+
+        double odom_calc_ = std::sqrt(d_x * d_x + d_y * d_y + d_z * d_z);
+        if(odom_calc_ < 0.01) odom_calc_ = 0.0;//保证抖动不会影响到里程总量
+        return odom_calc_ * 100.0;//单位转换为cm
+    }
+
+    double calc_odom(){
+        double odom_pr = 0.2 * vio_speed_calc;
+        if(odom_pr < 1.0) odom_pr = 0.0;//保证抖动不会影响到里程总量
+        return odom_pr;
+    }
+
+    void odom_callback(const myodom::MyOdomPtr &msg){
+        vio_udp_odom_read.lock();
+        vio_speed_calc = msg->velocity * 100;
+        // period_odom = msg->period_odom * 100;
+        period_odom = vio_speed_calc * 0.2;
+        calc_odom_result = msg->total_odom * 100;
+        confidence_coefficient = msg->confidence_coefficient;
+        odom_callback_flag = 0;
+        vio_udp_odom_read.unlock();
+    }
+
+    // void odom_callback(const nav_msgs::OdometryPtr &msg){
+    //     vio_udp_odom_read.lock();
+    //     period_odom += calc_odom(msg); 
+    //     vio_udp_odom_read.unlock();
+    //     int speed_temp = std::sqrt(msg->twist.twist.linear.x * msg->twist.twist.linear.x + 
+    //                                msg->twist.twist.linear.y * msg->twist.twist.linear.y + 
+    //                                msg->twist.twist.linear.z * msg->twist.twist.linear.z) * 100;//单位转换为cm/s
+    //     int error_temp;
+    //     if(!speed.empty())
+    //         error_temp = speed_temp - speed.back();
+    //     else
+    //         error_temp = speed_temp;
+    //     if(error_temp > 300 || error_temp < -300) return;//数据相差太大，直接退出
+        
+    //     if(speed.size() < count_freq){//数据量不够，直接入队
+    //         speed.push_back(speed_temp);
+    //     }
+    //     else{//队列已经达到预设长度，先弹出队头，再从队尾插入
+    //         speed.pop_front();
+    //         speed.push_back(speed_temp);
+    //     } 
+    // }
+
+    uint16_t cala_speed(){
+        uint16_t speed_calc = 0;
+        for(auto it = speed.begin(); it != speed.end(); ++it){
+            speed_calc += *it;
+        }
+        if(speed.size() != 0)
+            speed_calc = speed_calc / speed.size(); 
+        return speed_calc;
+    }
+    
+    uint16_t avg_speed_calc(){
+        uint16_t speed_calc = 0;
+        for(auto it = avg_speed.begin(); it != avg_speed.end(); ++it){
+            speed_calc += *it;
+        }
+        if(avg_speed.size() != 0)
+            speed_calc = speed_calc / avg_speed.size(); 
+        return speed_calc;
+    }
+
     //200ms定时发送信息
     void UDP_send(const ros::TimerEvent &e){
         vio_udp_odom_read.lock();
-        ROS_INFO("vio_udp_->atp_info_.atp_id = %d",vio_udp_->atp_info_.atp_id);
+        // if(avg_speed.size() < 5){
+        //     avg_speed.push_back(cala_speed());
+        // }
+        // else{
+        //     avg_speed.pop_front();
+        //     avg_speed.push_back(cala_speed());
+        // }
+        // vio_speed_calc = avg_speed_calc();
+        // if(odom_calc_sec_flag){
+        //     period_odom = calc_odom();
+        // }
+        // vio_udp_->vio_udp_send(vio_speed_calc,period_odom,&calc_odom_result);
+        ROS_INFO("vio_udp_->atp_info_.ATP_id = %d",vio_udp_->atp_info_.ATP_id);
         error_calc(atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom,
                    vio_speed_calc,(uint16_t)period_odom,(uint32_t)calc_odom_result);
         if(vio_speed_calc > 3000) confidence_coefficient = 0;//2023-12-21
         if(confidence_coefficient < 1){//视觉数据无效
             ROS_INFO("============================confidence_coefficient error ==================================");
             vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,false);
-            if(vio_udp_->atp_info_.atp_id == atp_id_num){//在这个方向跑才存日志
+            if(vio_udp_->atp_info_.ATP_id == atp_id_num){//在这个方向跑才存日志
                 change_ends_flag = false;
                 is_forward = true;
                 if(data_output_flag)
@@ -198,7 +284,7 @@ private:
             }
         }
         else{//视觉数据有效
-            if(vio_udp_->atp_info_.atp_id == atp_id_num){//在这个方向跑才存日志
+            if(vio_udp_->atp_info_.ATP_id == atp_id_num){//在这个方向跑才存日志
                 vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,true);
                 change_ends_flag = false;
                 is_forward = true;
@@ -260,7 +346,7 @@ private:
         if(udp_recv_flag > atp_times){//没收到数据，将一些东西置零
             atp_info_p.atp_speed = 0;
             atp_info_p.atp_period_odom = 0;
-            vio_udp_->atp_info_.atp_id = 0;
+            vio_udp_->atp_info_.ATP_id = 0;
             atp_info_p.beacon_id = 0,atp_info_p.beacon_odom = 0;
         }
         speed_error_persent = 0.0;
@@ -275,6 +361,7 @@ private:
     std::shared_ptr<Data_output> data_output;
     int line_vio,line_atp;
     ros::Publisher atp_info_pub; 
+    ros::Subscriber pub_my_odom_;
     
     ros::Timer timer_UDP_send;
     atp_info::atp atp_info_p;
@@ -287,6 +374,9 @@ private:
     int speed_error = 0,peroid_odom_error = 0,calc_odom_error = 0;
     float speed_error_persent = 0.0,peroid_odom_error_persent = 0.0,calc_odom_error_persent = 0.0;
     bool data_output_flag,data_display;
+    int count_freq;
+    std::deque<uint16_t> speed;
+    std::deque<uint16_t> avg_speed;
     uint16_t speed_callback_sum;
     uint16_t callback_count;
     bool bag_flag,odom_calc_sec_flag;
