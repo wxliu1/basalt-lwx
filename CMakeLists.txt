@@ -19,7 +19,7 @@ add_definitions(-DSHOW_TRACKED_POINTS)
 # else()
 #   message(STATUS "***---ADD_ATP_ID is OFF")
 # endif()
-# add_compile_definitions(_ADD_ATP_ID_)
+add_compile_definitions(_ADD_ATP_ID_)
 
 # if you want to use noise suppression, please open the two lines below.
 # i find it seems that option can not use prefix with "USE_", so i change 'USE_NOISE_SUPPRESSION' to 'OPTION_NOISE_SUPPRESSION'.

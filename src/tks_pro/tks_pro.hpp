@@ -115,6 +115,7 @@ private:
     void atp_info_init(){
         #ifdef _ADD_ATP_ID_
         atp_info_p.atp_id = 0;
+        std::cout << "atp init.  atp_id=" << atp_info_p.atp_id << std::endl;
         #endif
         atp_info_p.atp_speed = 0;
         atp_info_p.atp_period_odom = 0;
