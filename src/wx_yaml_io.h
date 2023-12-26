@@ -51,6 +51,7 @@ struct TYamlIO
     bool data_display { true };
     bool bag_flag { true };
     int atp_id { 0 };
+    int number_of_255 { 36 };
 
     void ReadConfiguration();
 #ifdef _NEED_WRITE_YAML    

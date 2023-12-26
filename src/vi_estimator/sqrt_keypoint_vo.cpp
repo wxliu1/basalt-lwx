@@ -878,7 +878,8 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   // if(g_imu->UseImuPose()) // 2023-11-20 10:22
   if(nTrackedPoints < 6 || g_imu->UseImuPose()) // test on 2023-12-20.
   {
-    std::cout << "begin reset algorithm.\n";
+    std::cout << std::boolalpha << "begin reset algorithm." << " tracked points: " << nTrackedPoints 
+      << " Is use imu pose? " << g_imu->UseImuPose() << std::endl;
     reset_(); 
     return false;
   }

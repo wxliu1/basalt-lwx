@@ -1,13 +1,13 @@
 show_gui: false
 print_queue: false
-# cam_calib_path: /root/lwx_dataset/config/173_calib_vo.json
+cam_calib_path: /root/lwx_dataset/config/173_calib_vo.json
 # cam_calib_path: /root/stereo3_ws/install/share/stereo3/config/173_calib_vo.json
-cam_calib_path: /root/dev/stereo3_ros1_ws/install/share/stereo3/config/173_calib_vo.json
+# cam_calib_path: /root/dev/stereo3_ros1_ws/install/share/stereo3/config/173_calib_vo.json
 dataset_path: ""
 dataset_type: ""
-# config_path: /root/lwx_dataset/config/173_vio_config.json
+config_path: /root/lwx_dataset/config/173_vio_config.json
 # config_path: /root/stereo3_ws/install/share/stereo3/config/vio_config.json
-config_path: /root/dev/stereo3_ros1_ws/install/share/stereo3/config/vio_config.json
+# config_path: /root/dev/stereo3_ros1_ws/install/share/stereo3/config/vio_config.json
 result_path: ""
 trajectory_fmt: ""
 trajectory_groundtruth: false

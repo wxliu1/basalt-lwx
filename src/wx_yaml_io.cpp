@@ -64,6 +64,8 @@ void TYamlIO::ReadConfiguration()
     config["data_display"] = data_display;
     config["bag_flag"] = bag_flag;
     config["atp_id"] = atp_id;
+
+    config["number_of_255"] = number_of_255;
 /*
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
                               0.0, 1.0, 0.0, 0.0,
@@ -143,6 +145,9 @@ void TYamlIO::ReadConfiguration()
 
     if(config["atp_id"].Type() == YAML::NodeType::Scalar)
     atp_id = config["atp_id"].as<int>();
+
+    if(config["number_of_255"].Type() == YAML::NodeType::Scalar)
+    number_of_255 = config["number_of_255"].as<int>();
 
     // read imu_cam extrinsic
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,

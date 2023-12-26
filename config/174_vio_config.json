@@ -2,6 +2,7 @@
     "value0": {
         "config.optical_flow_type": "frame_to_frame",   "//": "光流类型，这里是帧间光流",
         "config.optical_flow_detection_grid_size": 30,   "//": "光流检测网格大小",
+        "config.delta_grid_size": 20,
         "config.optical_flow_max_recovered_dist2": 0.04,   "//": "光流最大恢复距离的平方",
         "config.optical_flow_pattern": 51,   "//": "光流模式",
         "config.optical_flow_max_iterations": 5,   "//": "光流最大迭代次数",

@@ -308,6 +308,7 @@ void reset_algorithm_thread()
     {
       if(is_forward)
       {
+        std::cout << "'is_forward' changed from true to false." << std::endl;
         is_forward = false;
       }
     }

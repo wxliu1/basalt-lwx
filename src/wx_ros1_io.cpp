@@ -53,7 +53,8 @@ CRos1IO::CRos1IO(const ros::NodeHandle& pnh, const TYamlIO &yaml) noexcept
     << "config_path=" << yaml_.config_path << std::endl
     << "dt_ns = " << yaml_.dt_ns << std::endl
     << "slow_velocity = " << yaml_.slow_velocity << "  zero_velocity = " << yaml_.zero_velocity << std::endl
-    << "mean_value = " << yaml_.mean_value << std::endl;
+    << "mean_value = " << yaml_.mean_value << std::endl
+    << "number_of_255 = " << yaml_.number_of_255 << std::endl;
 
   int cnt = yaml_.vec_tracked_points.size();
   std::string strConfidenceInterval = "tracked_points:[";
@@ -956,7 +957,7 @@ double publish_velocity = curr_velocity;
     total_odom += period_odom;
 
     
-    if (pub_my_odom_.getNumSubscribers() > 0)
+    // if (pub_my_odom_.getNumSubscribers() > 0)
     {
       myodom::MyOdom odom_msg;
       // odom_msg.header.stamp = rclcpp::Time(data->t_ns);
@@ -1055,6 +1056,7 @@ double publish_velocity = curr_velocity;
       odom_msg.confidence_coefficient = confidence_coefficient;
       
       // publish velocity, period odom and total odom.
+      if (pub_my_odom_.getNumSubscribers() > 0)
       pub_my_odom_.publish(odom_msg);
 
       if(add_odom_frame_)
@@ -1137,15 +1139,27 @@ void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data)
     // check if lamp is on or off 2023-12-20.
     // if(1)
     {
-      // cv::Mat mask = disp_frame == 255;
-      // int count = cv::countNonZero(mask);
-      // std::cout << "Number of intensity equal to 255 is " << count << std::endl;
-      // // more than 30 pixels with 255 denote lamp on.
+#if 1      
+      // static int rev_cnt = 0;
+      cv::Mat mask = disp_frame == 255;
+      int count = cv::countNonZero(mask);
+      if(count > 15)
+      std::cout << "Number of intensity equal to 255 is " << count << std::endl;
+      // more than 30 pixels with 255 denote lamp on.
 
+      // if(rev_cnt == 0)
+      // {
+      //   rev_cnt = count;
+      // }
+      // int nAverage = (rev_cnt + count) / 2;
+      // rev_cnt = count;
+#else
       cv::Scalar meanValue = cv::mean(disp_frame);
       float MyMeanValue = meanValue.val[0];//.val[0]表示第一个通道的均值
       // std::cout<<"Average of all pixels in image0 with 1st channel is "<< MyMeanValue << std::endl;
-      if(MyMeanValue >= yaml_.mean_value)
+#endif      
+      // if(MyMeanValue >= yaml_.mean_value)
+      if(count >= yaml_.number_of_255)
       {
         if(!isLampOn_)
         {
