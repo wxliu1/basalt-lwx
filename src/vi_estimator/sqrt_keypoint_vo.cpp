@@ -626,6 +626,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
         SE3 T_0_1 =
             calib.T_i_c[0].inverse() * T_i0_i1 * calib.T_i_c[tcido.cam_id];
 
+        // 实验还发现，如果vio_min_triangulation_dist设置的值超过基线则选不到点。
         // 对于第一帧来说，做三角测量，应该是通过右目成功跟踪匹配的点来完成的吧
         if (T_0_1.translation().squaredNorm() < min_triang_distance2) continue; // 如果基线不够，则跳过
         
