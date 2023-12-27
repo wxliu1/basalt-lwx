@@ -194,6 +194,7 @@ private:
                 is_forward = false;
                 if(change_ends_flag == false){
                     change_ends_flag = true;
+                if(data_output_flag)
                     data_output->change_ends();
                 }
             }
@@ -214,6 +215,7 @@ private:
                 is_forward = false;    
                 if(change_ends_flag == false){
                     change_ends_flag = true;
+                if(data_output_flag) 
                     data_output->change_ends();
                 }
             }
