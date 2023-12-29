@@ -61,6 +61,7 @@ find_package(myodom REQUIRED)
 
 find_package(catkin REQUIRED COMPONENTS 
   roscpp
+  rosbag
   # tf2_ros
   # tf2_eigen
   cv_bridge
@@ -83,7 +84,7 @@ find_package(catkin REQUIRED COMPONENTS
   # pcl_ros
   myodom
   atp_info
-  
+
 )
 
 find_package(yaml-cpp REQUIRED)
@@ -100,6 +101,7 @@ include_directories(
   # ${EIGEN3_INCLUDE_DIR}
   # "./"
   "/usr/local/include"
+  # thirdparty2/ros_msg_parser/include
 )
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/" ${CMAKE_MODULE_PATH})

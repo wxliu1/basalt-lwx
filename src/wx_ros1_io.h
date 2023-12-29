@@ -3,6 +3,8 @@
 #ifndef _WX_ROS2_IO_H_
 #define _WX_ROS2_IO_H_
 
+#define _RECORD_BAG_
+
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -10,7 +12,9 @@
 #include <thread>
 
 #include <tbb/concurrent_queue.h>
-
+#ifdef _RECORD_BAG_
+#include <rosbag/bag.h>
+#endif
 #include <cv_bridge/cv_bridge.h>
 
 // #include "std_msgs/string.h"
@@ -50,7 +54,7 @@ using std::placeholders::_1;
 
 // #define _NOISE_SUPPRESSION_
 
-// #define _IS_FORWARD_
+#define _IS_FORWARD_
 
 namespace wx {
 
@@ -65,6 +69,12 @@ namespace cb = cv_bridge;
 namespace sm = sensor_msgs;
 // namespace gm = geometry_msgs;
 namespace mf = message_filters;
+
+typedef struct _TStereoImage
+{
+    sm::ImageConstPtr image0_ptr;
+    sm::ImageConstPtr image1_ptr;
+}TStereoImage;
 
 class CRos1IO
 {
@@ -81,10 +91,21 @@ public:
     void PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data); // TODO: transfer timestamp of sampling.
     void PublishFeatureImage(basalt::VioVisualizationData::Ptr data);
     void PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data, bool bl_publish = false);
+    void ResetPublishedOdom() { isResetOdom = true; }
+    #ifdef _RECORD_BAG_
+    void OpenRosbag();
+    void CloseRosBag();// { bag_.close(); }
+    void SetRecordBag(bool bl) { record_bag = bl; }
+    inline bool GetRecordBag() { return record_bag; }
+    void WriteBagThread();
+    #endif
 
 private: 
     void PublishMyOdomThread();
-    void imu_callback(const sensor_msgs::ImuConstPtr& imu_msg) const; 
+    #ifdef _RECORD_BAG_
+    void RecordBagThread();
+    #endif
+    void imu_callback(const sensor_msgs::ImuConstPtr& imu_msg);// const; 
 
     void StereoCb(const sm::ImageConstPtr& image0_ptr,
         const sm::ImageConstPtr& image1_ptr);
@@ -161,7 +182,7 @@ public:
     std::function<void(bool bl)> slowVelocity_;
     std::function<void(void)> reset_; // reset alogorithm.
     // std::function<void(double speed_, double calc_odom_result_, float confidence_coefficient_)>add_odom_frame_;
-    std::function<void(double, double, float)>add_odom_frame_;
+    std::function<void(double, double, double, float)>add_odom_frame_;
     std::function<bool(void)> isForward_;
 
 private:
@@ -221,6 +242,19 @@ private:
         .estimate_value_curr = 25,
         .estimate_variance_curr = 1,
     };*/
+
+    bool isResetOdom { false };
+    #ifdef _RECORD_BAG_
+    rosbag::Bag bag_;
+    std::string bag_name { "test.bag" };
+    bool record_bag { false };
+    std::mutex m_rec_;
+    tbb::concurrent_bounded_queue<TStereoImage> stereo_img_queue;
+    tbb::concurrent_bounded_queue<sensor_msgs::ImuConstPtr> imu_queue;
+    std::thread t_write_bag;
+    std::thread t_record_bag;
+    #endif
+    
 
 /*
  * minimal publisher and subscriber

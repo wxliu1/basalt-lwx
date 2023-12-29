@@ -142,6 +142,7 @@ class VioEstimatorBase {
   virtual void addVisionToQueue(const OpticalFlowResult::Ptr& data) = 0;
 
   std::function<void(void)> reset_;
+  std::function<void(void)> resetPublishedOdom_;
 };
 
 class VioEstimatorFactory {

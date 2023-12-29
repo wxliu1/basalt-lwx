@@ -24,6 +24,7 @@
   <depend>cv_bridge</depend>
   <depend>myodom</depend> <!--add this module to ensure find it before compile-->
   <depend>atp_info</depend>
+  <depend>rosbag</depend>
 
   <export>
   </export>

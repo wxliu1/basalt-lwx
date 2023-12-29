@@ -72,6 +72,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <fcntl.h>
 
+
+// #define _RECORD_BAG_
+
+#if 0//def _RECORD_BAG_
+#include <ros/ros.h>
+#include <rosbag/bag.h>
+#include <ctime>
+#include <iomanip>
+#include <topic_tools/shape_shifter.h>
+#endif
+
 using namespace wx;
 
 #define _SHOW_POINTS
@@ -134,7 +145,12 @@ bool is_forward = false;
 ImuProcess* g_imu = nullptr;
 // the end.
 
-// bool g_isZeroVelocity = true;
+std::function<void(void)> resetPublishedOdom_;
+
+#ifdef _RECORD_BAG_
+std::function<void(void)> openRosbag_;
+std::function<void(void)> closeRosBag_;
+#endif
 
 void zeroVelocity(bool bl)
 {
@@ -263,7 +279,7 @@ void Reset()
 
 }
 
-void command()
+void command(TYamlIO *yaml)
 {
   std::cout << "1 command()" << std::endl;
   while (1)
@@ -281,6 +297,39 @@ void command()
       Reset();
       std::cout << "reset command over." << std::endl;
     }
+    #ifdef _RECORD_BAG_
+    
+    {
+      if(c == 'w')
+      {
+        if (!yaml->record_bag)
+        {
+          std::cout << "press 'w' to write bag" << std::endl;
+          if(openRosbag_)
+          openRosbag_();
+        }
+        else{ 
+          std::cout << "now is automatic record bag mode. can't open bag." << std::endl;
+        }
+        
+      }
+      else if(c == 'x')
+      {
+        if(!yaml->record_bag)
+        {
+          std::cout << "press 'x' to close bag" << std::endl;
+          if(closeRosBag_)
+          closeRosBag_();
+        }
+        else
+        {
+          std::cout << "now is automatic record bag mode. can't close bag." << std::endl;
+        }
+      }
+    }
+    
+    #endif
+
   #endif
 
     std::chrono::milliseconds dura(500);
@@ -302,6 +351,11 @@ void reset_algorithm_thread()
         is_forward = true;
         std::cout << "because of 'is_forward' changed from false to true, we start to reset algorithm." << std::endl;
         Reset();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if(resetPublishedOdom_)
+        {
+          resetPublishedOdom_();
+        }
       }
     }
     else
@@ -318,6 +372,49 @@ void reset_algorithm_thread()
     std::this_thread::sleep_for(dura);
   }
 }
+
+#if 0//def _RECORD_BAG_
+void record_rosbag_file()
+{
+  // format bag name
+  std::time_t current_time = std::time(nullptr);
+  std::tm* time_info = std::localtime(&current_time);
+  char buffer[50];
+  std::strftime(buffer, sizeof(buffer), "%Y-%m-%d-%H-%M-%S", time_info);
+  std::string bag_name = "./" + std::string(buffer) + ".bag";
+
+  // add topic list
+  std::vector<std::string> topic_list;
+  topic_list.emplace_back("/atp_info");
+  topic_list.emplace_back("/camera_left_info");
+  topic_list.emplace_back("/camera_right_info");
+  topic_list.emplace_back("/image_left");
+  topic_list.emplace_back("/image_left_info");
+  topic_list.emplace_back("/image_right");
+  topic_list.emplace_back("/image_right_info");
+  topic_list.emplace_back("/imu");
+
+  rosbag::Bag bag;
+
+  try {
+      bag.open(bag_name.c_str(), rosbag::bagmode::Write);
+  } catch (rosbag::BagException &e) {
+      ROS_ERROR("open rosbag failed: %s", e.what());
+      return ;
+  }
+
+  std::vector<ros::Subscriber> sub_list;
+  for (auto & item : topic_list) {
+      ros::Subscriber sub = nh.subscribe<topic_tools::ShapeShifter>(item, 1000, std::bind(genericCallback, std::placeholders::_1, &bag, item));        
+      sub_list.push_back(sub);
+      ROS_INFO("subscribed to %s", item.c_str());
+  }
+
+  ros::spin();
+
+  bag.close();
+}
+#endif
 
 static int check_pid_lock()
 {
@@ -362,13 +459,12 @@ int main(int argc, char** argv) {
   CLI::App app{"App description"};
 */
 
-  std::thread keyboard_command_process;
-  keyboard_command_process = std::thread(command);
-  // keyboard_command_process.join();
 
-  std::thread reset_process;
-  reset_process = std::thread(reset_algorithm_thread);
-  // reset_process.join();
+#if 0 //def _RECORD_BAG_
+  std::thread record_process;
+  record_process = std::thread(record_rosbag_file);
+  // record_process.join();
+#endif
 
   // int *p = NULL;
   // std::cout<<*p<<std::endl;
@@ -416,6 +512,15 @@ int main(int argc, char** argv) {
 #endif
 
   // the end.
+
+  std::thread keyboard_command_process;
+  keyboard_command_process = std::thread(command, &yaml);
+  // keyboard_command_process.join();
+
+  std::thread reset_process;
+  reset_process = std::thread(reset_algorithm_thread);
+  // reset_process.join();
+
 
   // 2023-11-13
   sys_cfg_.use_imu = yaml.use_imu;
@@ -539,15 +644,21 @@ int main(int argc, char** argv) {
   node.zeroVelocity_ = std::bind(&zeroVelocity, std::placeholders::_1);
   node.slowVelocity_ = std::bind(&slowVelocity, std::placeholders::_1);
   node.reset_ = std::bind(&Reset);
-
+  vio->resetPublishedOdom_ = std::bind(&wx::CRos1IO::ResetPublishedOdom, &node);
+  resetPublishedOdom_ = std::bind(&wx::CRos1IO::ResetPublishedOdom, &node);
+#ifdef _RECORD_BAG_
+  openRosbag_ = std::bind(&wx::CRos1IO::OpenRosbag, &node);
+  closeRosBag_ = std::bind(&wx::CRos1IO::CloseRosBag, &node);
+#endif
   // the end.
 
   if(yaml.tks_pro_integration){
     tks_pro = std::make_shared<Tks_pro>(n, yaml);
     node.add_odom_frame_ = std::bind(&Tks_pro::add_odom_frame, tks_pro, std::placeholders::_1, 
-      std::placeholders::_2, std::placeholders::_3);
+      std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
 
     node.isForward_ = std::bind(&Tks_pro::IsForward, tks_pro);
+
   }
 
   // step 6: 创建图像和imu线程输入数据
@@ -623,7 +734,10 @@ int main(int argc, char** argv) {
   // 2023-11-10
   // ros::spin(); // comment 
   spinner.spin();  // add this line 2023-12-04
+  node.CloseRosBag();
+#ifdef _RECORD_BAG_  
   node.stop_();
+#endif  
   // the end.
 
   // wait first for vio to complete processing

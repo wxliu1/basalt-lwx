@@ -21,7 +21,7 @@
 class Tks_pro{
 public:
     Tks_pro(ros::NodeHandle& nh, const TYamlIO &yaml) : yaml_(yaml) {
-         ROS_INFO("=====================version 2023-12-26=====================");
+         ROS_INFO("=====================version 2023-12-28=====================");
         // 调用函数获取当前系统时间并输出
         std::string currentTimeString = getCurrentSystemTime();
         line_vio = 1,line_atp = 1;
@@ -88,6 +88,7 @@ public:
         nh.param<int>("odom_times",odom_times,3);
         nh.param<int>("atp_times",atp_times,6);
         nh.param<int>("atp_id",atp_id_num,1);
+        // nh.param<int>("log_freq",log_freq,0);
         odom_callback_flag = 0,udp_recv_flag = 0;
         confidence_coefficient = 0.0;
         change_ends_flag = false;
@@ -98,18 +99,18 @@ public:
 
     ~Tks_pro(){}
 
-    void add_odom_frame(double speed_,double calc_odom_result_,float confidence_coefficient_){
+    void add_odom_frame(double speed_, double period_odom_, double calc_odom_result_,float confidence_coefficient_){
         vio_udp_odom_read.lock();
         vio_speed_calc = speed_ * 100;
-        // period_odom = msg->period_odom * 100;
-        period_odom = vio_speed_calc * 0.2;
+        period_odom = period_odom_ * 100;
+        // period_odom = vio_speed_calc * 0.2;
         calc_odom_result = calc_odom_result_ * 100;
         confidence_coefficient = confidence_coefficient_;
         odom_callback_flag = 0;
         vio_udp_odom_read.unlock();
     }
 
-    inline bool IsForward() {return is_forward; }
+    inline bool IsForward() { return is_forward; }
 
 private:
     void atp_info_init(){
@@ -174,12 +175,10 @@ private:
     //200ms定时发送信息
     void UDP_send(const ros::TimerEvent &e){
         vio_udp_odom_read.lock();
-        ROS_INFO("vio_udp_->atp_info_.atp_id = %d",vio_udp_->atp_info_.atp_id);
         error_calc(atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom,
                    vio_speed_calc,(uint16_t)period_odom,(uint32_t)calc_odom_result);
         if(vio_speed_calc > 3000) confidence_coefficient = 0;//2023-12-21
         if(confidence_coefficient < 1){//视觉数据无效
-            ROS_INFO("============================confidence_coefficient error ==================================");
             vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,false);
             if(vio_udp_->atp_info_.atp_id == atp_id_num){//在这个方向跑才存日志
                 change_ends_flag = false;
@@ -221,15 +220,22 @@ private:
             }
         }
         if(data_display){
-            printf("===================================\n");
-            ROS_INFO("vio_speed = %d,vio_period_odom = %lf,vio_calc_odom = %lf",vio_speed_calc,period_odom,calc_odom_result);
-            ROS_INFO("atp_speed = %d,atp_period_odom = %d,atp_calc_odom = %d",
-                    atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom);   
-            ROS_INFO("speed_error = %d,peroid_odom_error = %d,calc_odom_error = %d",
-                    speed_error,peroid_odom_error,calc_odom_error);   
-            ROS_INFO("speed_error_persent = %f%%,peroid_odom_error_persent = %f%%,calc_odom_error_persent = %f%%",
-                    speed_error_persent * 100.0,peroid_odom_error_persent * 100.0,calc_odom_error_persent * 100.0);  
-            printf("===================================\n"); 
+            static int count_i = 0;
+            if(count_i++ == yaml_.log_freq){
+                if(confidence_coefficient < 1)
+                    ROS_INFO("============================confidence_coefficient error ==================================");
+                printf("===================================\n");
+                ROS_INFO("vio_udp_->atp_info_.atp_id = %d",vio_udp_->atp_info_.atp_id);
+                ROS_INFO("vio_speed = %d,vio_period_odom = %lf,vio_calc_odom = %lf",vio_speed_calc,period_odom,calc_odom_result);
+                ROS_INFO("atp_speed = %d,atp_period_odom = %d,atp_calc_odom = %d",
+                        atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom);   
+                ROS_INFO("speed_error = %d,peroid_odom_error = %d,calc_odom_error = %d",
+                        speed_error,peroid_odom_error,calc_odom_error);   
+                ROS_INFO("speed_error_persent = %f%%,peroid_odom_error_persent = %f%%,calc_odom_error_persent = %f%%",
+                        speed_error_persent * 100.0,peroid_odom_error_persent * 100.0,calc_odom_error_persent * 100.0);  
+                printf("===================================\n");
+                count_i = 0;
+            } 
         }
         else
             ROS_INFO("vio_speed = %d,vio_period_odom = %lf,vio_calc_odom = %lf",vio_speed_calc,period_odom,calc_odom_result);

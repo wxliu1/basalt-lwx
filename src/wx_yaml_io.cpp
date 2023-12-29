@@ -66,6 +66,10 @@ void TYamlIO::ReadConfiguration()
     config["atp_id"] = atp_id;
 
     config["number_of_255"] = number_of_255;
+    config["log_freq"] = log_freq;
+    config["abnormal_velocity"] = abnormal_velocity;
+    config["record_bag"] = record_bag;
+    config["record_duration"] = record_duration;
 /*
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
                               0.0, 1.0, 0.0, 0.0,
@@ -148,6 +152,18 @@ void TYamlIO::ReadConfiguration()
 
     if(config["number_of_255"].Type() == YAML::NodeType::Scalar)
     number_of_255 = config["number_of_255"].as<int>();
+
+    if(config["log_freq"].Type() == YAML::NodeType::Scalar)
+      log_freq = config["log_freq"].as<int>();
+
+    if(config["abnormal_velocity"].Type() == YAML::NodeType::Scalar)  
+      abnormal_velocity = config["abnormal_velocity"].as<double>();
+
+    if(config["record_bag"].Type() == YAML::NodeType::Scalar)
+    record_bag = config["record_bag"].as<bool>(); 
+
+    if(config["record_duration"].Type() == YAML::NodeType::Scalar)
+      record_duration = config["record_duration"].as<int>(); 
 
     // read imu_cam extrinsic
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,

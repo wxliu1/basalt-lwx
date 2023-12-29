@@ -52,6 +52,11 @@ struct TYamlIO
     bool bag_flag { true };
     int atp_id { 0 };
     int number_of_255 { 36 };
+    int log_freq{ 0 };
+
+    double abnormal_velocity { 25.0 };
+    bool record_bag { false };
+    int record_duration { 600 };
 
     void ReadConfiguration();
 #ifdef _NEED_WRITE_YAML    

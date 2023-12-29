@@ -92,6 +92,11 @@ public:
             std::cout << std::endl;
         }
         sendto(udp_sockfd_,&vio_info_,sizeof(vio_info_),0, (struct sockaddr *)&addr,sizeof(addr));
+
+        // 创建新线程并异步发送数据
+        // std::thread([=]() {
+        //     sendto(udp_sockfd_, &vio_info_, sizeof(vio_info_), 0, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+        // }).detach();
     }
 
     void vio_udp_send(uint16_t speed,double odom,double calc_odom,bool is_valid = true){
@@ -108,6 +113,11 @@ public:
             std::cout << std::endl;
         }
         sendto(udp_sockfd_,&vio_info_,sizeof(vio_info_),0, (struct sockaddr *)&addr,sizeof(addr));
+
+        // 创建新线程并异步发送数据
+        // std::thread([=]() {
+        //     sendto(udp_sockfd_, &vio_info_, sizeof(vio_info_), 0, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+        // }).detach();
     }
 
 private:
