@@ -47,10 +47,11 @@ public:
         atp_info_init();
         // nh.param<int>("odom_times",odom_times,3);
         odom_times = 3;
-        // nh.param<int>("atp_times",atp_times,6);
-        atp_times = 6;
+        // nh.param<int>("atp_times",atp_times,3);
+        atp_times = 3;
         // nh.param<int>("atp_id",atp_id_num,1);
         atp_id_num = yaml_.atp_id;
+        std::cout << "atp init.  atp_id=" << atp_id_num << std::endl;
         odom_callback_flag = 0,udp_recv_flag = 0;
         confidence_coefficient = 0.0;
         change_ends_flag = false;
@@ -86,8 +87,9 @@ public:
             atp_info_pub = nh.advertise<atp_info::atp>("/atp_info",5);
         atp_info_init();
         nh.param<int>("odom_times",odom_times,3);
-        nh.param<int>("atp_times",atp_times,6);
+        nh.param<int>("atp_times",atp_times,3);
         nh.param<int>("atp_id",atp_id_num,1);
+        std::cout << "atp init.  atp_id=" << atp_id_num << std::endl;
         // nh.param<int>("log_freq",log_freq,0);
         odom_callback_flag = 0,udp_recv_flag = 0;
         confidence_coefficient = 0.0;
@@ -116,7 +118,6 @@ private:
     void atp_info_init(){
         #ifdef _ADD_ATP_ID_
         atp_info_p.atp_id = 0;
-        std::cout << "atp init.  atp_id=" << atp_info_p.atp_id << std::endl;
         #endif
         atp_info_p.atp_speed = 0;
         atp_info_p.atp_period_odom = 0;
@@ -174,48 +175,57 @@ private:
 
     //200ms定时发送信息
     void UDP_send(const ros::TimerEvent &e){
+        if(!bag_flag)
+            if(vio_udp_->atp_info_flag){
+                atp_info_publish();
+                vio_udp_->atp_info_flag = false;
+            }
         vio_udp_odom_read.lock();
         error_calc(atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom,
                    vio_speed_calc,(uint16_t)period_odom,(uint32_t)calc_odom_result);
         if(vio_speed_calc > 3000) confidence_coefficient = 0;//2023-12-21
         if(confidence_coefficient < 1){//视觉数据无效
             vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,false);
-            if(vio_udp_->atp_info_.atp_id == atp_id_num){//在这个方向跑才存日志
-                change_ends_flag = false;
-                is_forward = true;
-                if(data_output_flag)
-                    data_output->write_data(line_vio++,atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom,
-                                            vio_speed_calc,(uint16_t)period_odom,(uint32_t)calc_odom_result,
-                                            speed_error,peroid_odom_error,calc_odom_error,
-                                            atp_info_p.beacon_id,atp_info_p.beacon_odom,0);
-            }
-            else{
-                is_forward = false;
-                if(change_ends_flag == false){
-                    change_ends_flag = true;
-                if(data_output_flag)
-                    data_output->change_ends();
+            if(atp_info_p.atp_id != 0) {
+                if(atp_info_p.atp_id == atp_id_num){//在这个方向跑才存日志
+                    change_ends_flag = false;
+                    is_forward = true;
+                    if(data_output_flag)
+                        data_output->write_data(line_vio++,atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom,
+                                                vio_speed_calc,(uint16_t)period_odom,(uint32_t)calc_odom_result,
+                                                speed_error,peroid_odom_error,calc_odom_error,
+                                                atp_info_p.beacon_id,atp_info_p.beacon_odom,0);
+                }
+                else{
+                    is_forward = false;
+                    if(change_ends_flag == false){
+                        change_ends_flag = true;
+                    if(data_output_flag)
+                        data_output->change_ends();
+                    }
                 }
             }
         }
         else{//视觉数据有效
-            if(vio_udp_->atp_info_.atp_id == atp_id_num){//在这个方向跑才存日志
-                vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,true);
-                change_ends_flag = false;
-                is_forward = true;
-                if(data_output_flag)
-                    data_output->write_data(line_vio++,atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom,
-                                            vio_speed_calc,(uint16_t)period_odom,(uint32_t)calc_odom_result,
-                                            speed_error,peroid_odom_error,calc_odom_error,
-                                            atp_info_p.beacon_id,atp_info_p.beacon_odom,1);
-            }
-            else{//反向跑直接置信位给0
-                vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,false);
-                is_forward = false;    
-                if(change_ends_flag == false){
-                    change_ends_flag = true;
-                if(data_output_flag) 
-                    data_output->change_ends();
+            if(atp_info_p.atp_id != 0) {
+                if(atp_info_p.atp_id == atp_id_num){//在这个方向跑才存日志
+                    vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,true);
+                    change_ends_flag = false;
+                    is_forward = true;
+                    if(data_output_flag)
+                        data_output->write_data(line_vio++,atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom,
+                                                vio_speed_calc,(uint16_t)period_odom,(uint32_t)calc_odom_result,
+                                                speed_error,peroid_odom_error,calc_odom_error,
+                                                atp_info_p.beacon_id,atp_info_p.beacon_odom,1);
+                }
+                else{//反向跑直接置信位给0
+                    vio_udp_->vio_udp_send(vio_speed_calc,period_odom,calc_odom_result,false);
+                    is_forward = false;    
+                    if(change_ends_flag == false){
+                        change_ends_flag = true;
+                    if(data_output_flag) 
+                        data_output->change_ends();
+                    }
                 }
             }
         }
@@ -225,7 +235,7 @@ private:
                 if(confidence_coefficient < 1)
                     ROS_INFO("============================confidence_coefficient error ==================================");
                 printf("===================================\n");
-                ROS_INFO("vio_udp_->atp_info_.atp_id = %d",vio_udp_->atp_info_.atp_id);
+                ROS_INFO("atp_info_p.atp_id = %d",atp_info_p.atp_id);
                 ROS_INFO("vio_speed = %d,vio_period_odom = %lf,vio_calc_odom = %lf",vio_speed_calc,period_odom,calc_odom_result);
                 ROS_INFO("atp_speed = %d,atp_period_odom = %d,atp_calc_odom = %d",
                         atp_info_p.atp_speed,atp_info_p.atp_period_odom,atp_info_p.atp_calc_odom);   
@@ -237,15 +247,11 @@ private:
                 count_i = 0;
             } 
         }
-        else
-            ROS_INFO("vio_speed = %d,vio_period_odom = %lf,vio_calc_odom = %lf",vio_speed_calc,period_odom,calc_odom_result);
+        // else
+            // ROS_INFO("vio_speed = %d,vio_period_odom = %lf,vio_calc_odom = %lf",vio_speed_calc,period_odom,calc_odom_result);
         data_reset();
         vio_udp_odom_read.unlock();
-        if(!bag_flag)
-            if(vio_udp_->atp_info_flag){
-                atp_info_publish();
-                vio_udp_->atp_info_flag = false;
-            }
+        
     }
 
     void error_calc(uint16_t atp_speed,uint16_t atp_period_odom,uint32_t atp_calc_odom,
@@ -269,7 +275,7 @@ private:
         if(udp_recv_flag > atp_times){//没收到数据，将一些东西置零
             atp_info_p.atp_speed = 0;
             atp_info_p.atp_period_odom = 0;
-            vio_udp_->atp_info_.atp_id = 0;
+            atp_info_p.atp_id = 0;
             atp_info_p.beacon_id = 0,atp_info_p.beacon_odom = 0;
         }
         speed_error_persent = 0.0;

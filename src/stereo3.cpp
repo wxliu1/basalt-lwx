@@ -341,6 +341,8 @@ void command(TYamlIO *yaml)
 
 void reset_algorithm_thread()
 {
+  std::cout<< std::boolalpha << " reset_algorithm_thread is_forward=" << is_forward
+    << "  tks_pro->IsForward() = " << tks_pro->IsForward() << std::endl;
   while (1)
   {
   #if 1
@@ -517,11 +519,6 @@ int main(int argc, char** argv) {
   keyboard_command_process = std::thread(command, &yaml);
   // keyboard_command_process.join();
 
-  std::thread reset_process;
-  reset_process = std::thread(reset_algorithm_thread);
-  // reset_process.join();
-
-
   // 2023-11-13
   sys_cfg_.use_imu = yaml.use_imu;
   ImuProcess imu;
@@ -652,12 +649,18 @@ int main(int argc, char** argv) {
 #endif
   // the end.
 
+  std::thread reset_process;
+
   if(yaml.tks_pro_integration){
     tks_pro = std::make_shared<Tks_pro>(n, yaml);
     node.add_odom_frame_ = std::bind(&Tks_pro::add_odom_frame, tks_pro, std::placeholders::_1, 
       std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
 
     node.isForward_ = std::bind(&Tks_pro::IsForward, tks_pro);
+
+    // std::thread reset_process;
+    reset_process = std::thread(reset_algorithm_thread);
+    // reset_process.join();
 
   }
 

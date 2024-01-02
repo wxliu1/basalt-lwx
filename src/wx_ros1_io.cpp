@@ -159,6 +159,13 @@ void CRos1IO::WriteBagThread()
       continue ;
     }
 
+    // if (!imu_queue.empty()) {
+    while (!imu_queue.empty()) {
+      imu_queue.pop(imu_msg);
+      // handle data now.
+       bag_.write("/imu", imu_msg->header.stamp, *imu_msg);
+    }
+
     if (!stereo_img_queue.empty()) {
       stereo_img_queue.pop(stereo_img_msg);
       // handle data now.
@@ -166,11 +173,6 @@ void CRos1IO::WriteBagThread()
       bag_.write("/image_right", stereo_img_msg.image1_ptr->header.stamp, *stereo_img_msg.image1_ptr);
     }
 
-    if (!imu_queue.empty()) {
-      imu_queue.pop(imu_msg);
-      // handle data now.
-       bag_.write("/imu", imu_msg->header.stamp, *imu_msg);
-    }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }  // while(1)
 }

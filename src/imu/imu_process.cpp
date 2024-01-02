@@ -598,7 +598,7 @@ bool ImuProcess::getIMUInterval(double t0, double t1, vector<pair<double, Eigen:
     accVector.push_back(accBuf.front());
     gyrVector.push_back(gyrBuf.front());
   } else {
-    printf("wait for imu\n");
+    // printf("wait for imu\n");
 
     return false;
   }

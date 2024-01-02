@@ -56,7 +56,7 @@ struct TYamlIO
 
     double abnormal_velocity { 25.0 };
     bool record_bag { false };
-    int record_duration { 600 };
+    int record_duration { 180 }; // in second.
 
     void ReadConfiguration();
 #ifdef _NEED_WRITE_YAML    
