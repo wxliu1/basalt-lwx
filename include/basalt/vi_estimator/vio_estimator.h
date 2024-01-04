@@ -133,6 +133,7 @@ class VioEstimatorBase {
   virtual void Reset() = 0; // 2023-11-19.
   virtual inline bool GetResetAlgorithm() = 0;
   virtual void SetResetAlgorithm(bool bl) = 0;
+  virtual void SetResetInitPose(bool bl) = 0;
 
   // Legacy functions. Should not be used in the new code. 遗留函数。不应该在新代码中使用
   virtual void setMaxStates(size_t val) = 0;

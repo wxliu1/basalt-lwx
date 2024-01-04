@@ -487,6 +487,7 @@ void CRos1IO::PublishOdometry(basalt::PoseVelBiasState<double>::Ptr data) {
 }
 
 void CRos1IO::Reset() {
+  std::cout << "clear path_msg_.poses" << std::endl;
   path_msg_.poses.clear();
   path_msg_.poses.reserve(1024);
 }

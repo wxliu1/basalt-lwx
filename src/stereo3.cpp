@@ -279,6 +279,24 @@ void Reset()
 
 }
 
+void ClearPose()
+{
+  if(!vio->GetResetAlgorithm())
+  {
+    vio->SetResetAlgorithm(true);
+    if(vio->GetResetAlgorithm())
+    {
+      vio->SetResetInitPose(true);
+      opt_flow_ptr->Reset();
+    }
+
+  }
+  else
+  {
+    std::cout << "reset alogorithm is not complete yet." << std::endl;
+  }
+}
+
 void command(TYamlIO *yaml)
 {
   std::cout << "1 command()" << std::endl;
@@ -297,6 +315,13 @@ void command(TYamlIO *yaml)
       Reset();
       std::cout << "reset command over." << std::endl;
     }
+    else if('c' == c)
+    {
+      std::cout << "press 'c' to clear pose & reset algorithm" << std::endl;
+      ClearPose();
+      std::cout << "clear command over." << std::endl;
+    }
+
     #ifdef _RECORD_BAG_
     
     {
@@ -641,7 +666,8 @@ int main(int argc, char** argv) {
   node.zeroVelocity_ = std::bind(&zeroVelocity, std::placeholders::_1);
   node.slowVelocity_ = std::bind(&slowVelocity, std::placeholders::_1);
   node.reset_ = std::bind(&Reset);
-  vio->resetPublishedOdom_ = std::bind(&wx::CRos1IO::ResetPublishedOdom, &node);
+  // vio->resetPublishedOdom_ = std::bind(&wx::CRos1IO::ResetPublishedOdom, &node);
+  vio->resetPublishedOdom_ = std::bind(&wx::CRos1IO::Reset, &node); // For another use
   resetPublishedOdom_ = std::bind(&wx::CRos1IO::ResetPublishedOdom, &node);
 #ifdef _RECORD_BAG_
   openRosbag_ = std::bind(&wx::CRos1IO::OpenRosbag, &node);

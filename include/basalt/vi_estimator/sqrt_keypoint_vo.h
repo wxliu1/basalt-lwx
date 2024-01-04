@@ -199,6 +199,7 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   void setT_w_i_init(Sophus::SE3d Twi) // 2023-11-13.
   {
     T_w_i_init = Twi.template cast<Scalar>();
+    T_w_i_prev = T_w_i_init;
   }
 
   void debug_finalize() override;
@@ -207,6 +208,7 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   void Reset(); // 2023-11-19.
   virtual inline bool GetResetAlgorithm();
   virtual void SetResetAlgorithm(bool bl);
+  virtual void SetResetInitPose(bool bl);
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -268,6 +270,7 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   SE3 T_w_i_prev;
   // the end.
 
+  std::atomic<bool> isResetInitPose_ { false };
   bool isReset_ { false };
   void SetReset(bool bl) { isReset_ =bl; }
   inline bool GetReset() { return isReset_;}

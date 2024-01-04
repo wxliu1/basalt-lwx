@@ -131,6 +131,12 @@ void SqrtKeypointVoEstimator<Scalar_>::SetResetAlgorithm(bool bl)
 }
 
 template <class Scalar_>
+void SqrtKeypointVoEstimator<Scalar_>::SetResetInitPose(bool bl)
+{
+  isResetInitPose_ = bl;
+}
+
+template <class Scalar_>
 void SqrtKeypointVoEstimator<Scalar_>::Reset()
 {
   if(initialized == true)
@@ -194,9 +200,7 @@ void SqrtKeypointVoEstimator<Scalar_>::ExcuteReset()
   const PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
   T_w_i_init = p.getPose();//.template cast<double>()
   // reset first pose with identity matrix for tks.
-  // T_w_i_init = SE3();
-  // T_w_i_prev = SE3();
-
+  
   T_w_i_prev = T_w_i_init;
 
   frame_poses.clear();
@@ -217,6 +221,20 @@ void SqrtKeypointVoEstimator<Scalar_>::ExcuteReset()
 
   drain_input_queues();
 
+  if(isResetInitPose_)
+  {
+    T_w_i_init = SE3();
+    // T_w_i_prev = SE3();
+    isResetInitPose_ = false;
+    if(g_imu)
+    g_imu->reset();
+
+    // for another use: call CRos1IO::Reset
+    if(resetPublishedOdom_)
+    {
+      resetPublishedOdom_();
+    }
+  }
 
   // TODO:
   // stats_all_.Reset();
@@ -298,11 +316,6 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
         prev_frame = nullptr;
         SetResetAlgorithm(false);
         std::cout << "reset backend thread.\n";
-
-        // if(resetPublishedOdom_)
-        // {
-        //   resetPublishedOdom_();
-        // }
 
       }
       
