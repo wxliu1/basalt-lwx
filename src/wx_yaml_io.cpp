@@ -74,6 +74,7 @@ void TYamlIO::ReadConfiguration()
     config["acc_zero_velocity"] = acc_zero_velocity;
     config["ang_zero_velocity"] = ang_zero_velocity;
     config["change_end_wait_time"] = change_end_wait_time;
+    config["output_log"] = output_log;
 /*
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
                               0.0, 1.0, 0.0, 0.0,
@@ -177,6 +178,9 @@ void TYamlIO::ReadConfiguration()
 
     if(config["change_end_wait_time"].Type() == YAML::NodeType::Scalar)
     change_end_wait_time = config["change_end_wait_time"].as<double>();
+
+    if(config["output_log"].Type() == YAML::NodeType::Scalar)
+    output_log = config["output_log"].as<bool>();
 
     // read imu_cam extrinsic
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,

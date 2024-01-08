@@ -63,6 +63,7 @@ struct TYamlIO
     double acc_zero_velocity { 0.1 }; // 0.08
     double ang_zero_velocity { 0.003 };
     double change_end_wait_time { 1.0 }; // in seconds.
+    bool output_log { false };
 
     void ReadConfiguration();
 #ifdef _NEED_WRITE_YAML    

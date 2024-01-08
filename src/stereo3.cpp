@@ -265,16 +265,21 @@ void Reset()
   } 
   // the end.
 */
+
+  wx::TFileSystemHelper::WriteLog("try to reset alogorithm.");
+
   // Make sure it's safe
   if(!vio->GetResetAlgorithm())
   {
     vio->SetResetAlgorithm(true);
     if(vio->GetResetAlgorithm())
     opt_flow_ptr->Reset();
+     wx::TFileSystemHelper::WriteLog("reset alogorithm completed.");
   }
   else
   {
     std::cout << "reset alogorithm is not complete yet." << std::endl;
+    wx::TFileSystemHelper::WriteLog("reset alogorithm is not complete yet.");
   }
   
 
@@ -335,7 +340,7 @@ void command(TYamlIO *yaml)
           openRosbag_();
         }
         else{ 
-          std::cout << "now is automatic record bag mode. can't open bag." << std::endl;
+          std::cout << "now is automatic record bag mode. can't open bag manually." << std::endl;
         }
         
       }
@@ -349,7 +354,7 @@ void command(TYamlIO *yaml)
         }
         else
         {
-          std::cout << "now is automatic record bag mode. can't close bag." << std::endl;
+          std::cout << "now is automatic record bag mode. can't close bag manually." << std::endl;
         }
       }
     }
@@ -376,6 +381,7 @@ void reset_algorithm_thread(TYamlIO *yaml)
     {
       if(is_forward == false)
       {
+        wx::TFileSystemHelper::WriteLog("backward to forward, reset algorithm");
         // std::this_thread::sleep_for(std::chrono::seconds(1));
         std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000 * yaml->change_end_wait_time)));
         is_forward = true;
@@ -393,6 +399,7 @@ void reset_algorithm_thread(TYamlIO *yaml)
     {
       if(is_forward)
       {
+        wx::TFileSystemHelper::WriteLog("forward to backward. algorithm is disabled.");
         std::cout << "'is_forward' changed from true to false." << std::endl;
         is_forward = false;
         setForward_(false);
@@ -478,6 +485,30 @@ static int check_pid_lock()
 	return 0;
 }
 
+int GetModuleFileName(char *pathbuf, int buflen)
+{
+	int ret;
+	void *address;
+    address = (void*)(&GetModuleFileName);
+
+	if((pathbuf == NULL) || (buflen <=0))
+		return -1;
+
+    Dl_info dl_info;
+    dl_info.dli_fname = 0;
+    ret = dladdr(address, &dl_info);
+    if (0 != ret && dl_info.dli_fname != NULL) {
+        if(strlen(dl_info.dli_fname) >= buflen) {
+			return -2;
+		}
+
+		strcpy(pathbuf, dl_info.dli_fname);
+		return 0;
+    }
+
+    return -3;
+}
+
 int main(int argc, char** argv) {
 
   if (check_pid_lock()) return -1;
@@ -506,12 +537,13 @@ int main(int argc, char** argv) {
   // 2023-11-10
   struct TYamlIO yaml;
   yaml.ReadConfiguration();
- 
+
+#ifdef _VERIFY_CONFIG_FILE 
   std::cout << "calib_path=" << yaml.cam_calib_path << std::endl
     << "config_path=" << yaml.config_path << std::endl
     << "dt_ns = " << yaml.dt_ns << std::endl
     << "output_data_file = " << yaml.output_data_file << std::endl;
-#ifdef _VERIFY_CONFIG_FILE 
+ 
   int cnt = yaml.vec_tracked_points.size();
   std::string strConfidenceInterval = "tracked_points:[";
   for(int i = 0; i < cnt; i++)
@@ -544,6 +576,38 @@ int main(int argc, char** argv) {
 #endif
 
   // the end.
+
+  std::cout << std::boolalpha << "output_log=" << yaml.output_log << std::endl;
+  sys_cfg_.output_log = yaml.output_log;
+  if(yaml.output_log)
+  {
+    char szModulePath[260] = { 0 };
+    if(0 == GetModuleFileName(szModulePath, 260)) {
+        //szModulePath 就是.so文件的绝对路径。
+        // module path:./zc_server
+        std::cout << "module path:" << szModulePath << std::endl;
+    }
+
+    // char absolutePath[1024] = { 0 };
+    // wx::liu::FileSystemHelper::getAbsolutePath(absolutePath, argv[0]);
+    // printf("absolutePath = %s\n", absolutePath);
+
+    // szModulePath: /root/dev/stereo3_ros1_ws/install/lib/stereo3/stereo3
+    char *ptr = strrchr(szModulePath, '/');
+    *ptr = '\0';
+
+    strcat(szModulePath, "/logs");
+
+    sys_cfg_.log_file_path = szModulePath;
+    std::cout << "log file path:" << sys_cfg_.log_file_path << std::endl;
+
+
+    // strcat(szModulePath, "/");
+    wx::TFileSystemHelper::createDirectoryIfNotExists(szModulePath);
+    // wx::TFileSystemHelper::CreateDir(szModulePath);
+
+    wx::TFileSystemHelper::WriteLog("main()");
+  }
 
   std::thread keyboard_command_process;
   keyboard_command_process = std::thread(command, &yaml);

@@ -2,6 +2,8 @@
 // @author: wxliu
 // @date: 2023-11-9
 
+#include "wx_system.h"
+
 #include "wx_ros1_io.h"
 #include <basalt/image/image.h>
 // #include <basalt/utils/vis_utils.h>
@@ -684,6 +686,7 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
 
   if (isResetOdom) {
     std::cout << std::boolalpha << "isResetOdom=" << isResetOdom << std::endl;
+    wx::TFileSystemHelper::WriteLog("reset odom.");
     prev_velocity = 0.0;
     period_distance = 0.0;
     total_distance = 0.0;
@@ -1089,6 +1092,10 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
 
       std::cout << std::boolalpha << "isResetOdom=" << isResetOdom << std::endl;
 
+      char szLog[256] = { 0 };
+      sprintf(szLog, "The velocity '%.2f' is ABNORMAL. reset algorithm.", publish_velocity);
+      wx::TFileSystemHelper::WriteLog(szLog);
+
       prev_velocity = 0.0;
       period_distance = 0.0;
       total_distance = 0.0;
@@ -1105,6 +1112,10 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
       reset_();
       return;
     }
+
+    char szLog[256] = { 0 };
+    sprintf(szLog, "publish velocity: %.2f", publish_velocity);
+    wx::TFileSystemHelper::WriteLog(szLog);
 
     // if (pub_my_odom_.getNumSubscribers() > 0)
     {
@@ -1743,8 +1754,8 @@ void CRos1IO::CheckImuStillThread() {
           }
         }
 
-        std::cout << " average of accelerate is " << acc_aver 
-          << " average of angular speed is " << ang_aver << std::endl;
+        // std::cout << " average of accelerate is " << acc_aver 
+        //   << " average of angular speed is " << ang_aver << std::endl;
 
 
         // std::cout << " variance of accelerate is " << acc_aver 
