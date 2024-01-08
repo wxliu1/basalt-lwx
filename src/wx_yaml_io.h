@@ -57,6 +57,12 @@ struct TYamlIO
     double abnormal_velocity { 25.0 };
     bool record_bag { false };
     int record_duration { 180 }; // in second.
+    // double acc_zero_velocity { 0.002 }; //{ 0.1 };
+    // double ang_zero_velocity { 2e-6 }; // { 0.003 };
+
+    double acc_zero_velocity { 0.1 }; // 0.08
+    double ang_zero_velocity { 0.003 };
+    double change_end_wait_time { 1.0 }; // in seconds.
 
     void ReadConfiguration();
 #ifdef _NEED_WRITE_YAML    

@@ -70,6 +70,10 @@ void TYamlIO::ReadConfiguration()
     config["abnormal_velocity"] = abnormal_velocity;
     config["record_bag"] = record_bag;
     config["record_duration"] = record_duration;
+
+    config["acc_zero_velocity"] = acc_zero_velocity;
+    config["ang_zero_velocity"] = ang_zero_velocity;
+    config["change_end_wait_time"] = change_end_wait_time;
 /*
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
                               0.0, 1.0, 0.0, 0.0,
@@ -164,6 +168,15 @@ void TYamlIO::ReadConfiguration()
 
     if(config["record_duration"].Type() == YAML::NodeType::Scalar)
       record_duration = config["record_duration"].as<int>(); 
+
+    if(config["acc_zero_velocity"].Type() == YAML::NodeType::Scalar)
+    acc_zero_velocity = config["acc_zero_velocity"].as<double>();
+
+    if(config["ang_zero_velocity"].Type() == YAML::NodeType::Scalar)
+    ang_zero_velocity = config["ang_zero_velocity"].as<double>();
+
+    if(config["change_end_wait_time"].Type() == YAML::NodeType::Scalar)
+    change_end_wait_time = config["change_end_wait_time"].as<double>();
 
     // read imu_cam extrinsic
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,

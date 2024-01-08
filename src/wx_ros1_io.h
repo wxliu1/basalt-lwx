@@ -55,6 +55,7 @@ using std::placeholders::_1;
 // #define _NOISE_SUPPRESSION_
 
 #define _IS_FORWARD_
+#define _IS_IMU_STILL
 
 namespace wx {
 
@@ -100,11 +101,17 @@ public:
     void WriteBagThread();
     #endif
 
+    void SetForward(bool bl) { is_Forward_ = bl; }
+    inline bool GetForward() { return is_Forward_; }
+
 private: 
     void PublishMyOdomThread();
-    #ifdef _RECORD_BAG_
+ #ifdef _RECORD_BAG_
     void RecordBagThread();
-    #endif
+#endif
+#ifdef _IS_IMU_STILL
+    void CheckImuStillThread();
+#endif
     void imu_callback(const sensor_msgs::ImuConstPtr& imu_msg);// const; 
 
     void StereoCb(const sm::ImageConstPtr& image0_ptr,
@@ -254,7 +261,14 @@ private:
     std::thread t_write_bag;
     std::thread t_record_bag;
     #endif
-    
+#ifdef _IS_IMU_STILL
+    bool isStill_ { false };
+    tbb::concurrent_bounded_queue<sensor_msgs::ImuConstPtr> tmp_imu_queue_;
+    std::thread t_check_imu_still;
+#endif
+
+    bool isLightToggled { false };
+    bool is_Forward_ { false };
 
 /*
  * minimal publisher and subscriber

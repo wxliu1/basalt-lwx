@@ -146,6 +146,7 @@ ImuProcess* g_imu = nullptr;
 // the end.
 
 std::function<void(void)> resetPublishedOdom_;
+std::function<void(bool)> setForward_;
 
 #ifdef _RECORD_BAG_
 std::function<void(void)> openRosbag_;
@@ -364,7 +365,7 @@ void command(TYamlIO *yaml)
   std::cout << "2 command()" << std::endl;
 }
 
-void reset_algorithm_thread()
+void reset_algorithm_thread(TYamlIO *yaml)
 {
   std::cout<< std::boolalpha << " reset_algorithm_thread is_forward=" << is_forward
     << "  tks_pro->IsForward() = " << tks_pro->IsForward() << std::endl;
@@ -375,9 +376,12 @@ void reset_algorithm_thread()
     {
       if(is_forward == false)
       {
+        // std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000 * yaml->change_end_wait_time)));
         is_forward = true;
         std::cout << "because of 'is_forward' changed from false to true, we start to reset algorithm." << std::endl;
         Reset();
+        setForward_(true);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         if(resetPublishedOdom_)
         {
@@ -391,6 +395,7 @@ void reset_algorithm_thread()
       {
         std::cout << "'is_forward' changed from true to false." << std::endl;
         is_forward = false;
+        setForward_(false);
       }
     }
   #endif
@@ -669,6 +674,7 @@ int main(int argc, char** argv) {
   // vio->resetPublishedOdom_ = std::bind(&wx::CRos1IO::ResetPublishedOdom, &node);
   vio->resetPublishedOdom_ = std::bind(&wx::CRos1IO::Reset, &node); // For another use
   resetPublishedOdom_ = std::bind(&wx::CRos1IO::ResetPublishedOdom, &node);
+  setForward_ = std::bind(&wx::CRos1IO::SetForward, &node, std::placeholders::_1);
 #ifdef _RECORD_BAG_
   openRosbag_ = std::bind(&wx::CRos1IO::OpenRosbag, &node);
   closeRosBag_ = std::bind(&wx::CRos1IO::CloseRosBag, &node);
@@ -685,7 +691,7 @@ int main(int argc, char** argv) {
     node.isForward_ = std::bind(&Tks_pro::IsForward, tks_pro);
 
     // std::thread reset_process;
-    reset_process = std::thread(reset_algorithm_thread);
+    reset_process = std::thread(reset_algorithm_thread, &yaml);
     // reset_process.join();
 
   }

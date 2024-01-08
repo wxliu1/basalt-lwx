@@ -10,6 +10,7 @@
 #include <basalt/io/dataset_io.h>
 
 #include <queue>
+#include <vector>
 
 extern basalt::OpticalFlowBase::Ptr opt_flow_ptr;  // 2023-11-28.
 
@@ -86,15 +87,24 @@ CRos1IO::CRos1IO(const ros::NodeHandle& pnh, const TYamlIO& yaml) noexcept
   std::cout << "CRos1IO---THE END---\n";
 #endif
 
+  if(!yaml_.tks_pro_integration)
+  {
+    SetForward(true);
+  }
+
   // create work thread
   t_publish_myodom = std::thread(&CRos1IO::PublishMyOdomThread, this);
- #ifdef _RECORD_BAG_
+#ifdef _RECORD_BAG_
   if (yaml_.record_bag)
     t_record_bag = std::thread(&CRos1IO::RecordBagThread, this);
 #endif
 
 #ifdef _RECORD_BAG_
   t_write_bag = std::thread(&CRos1IO::WriteBagThread, this);
+#endif
+
+#ifdef _IS_IMU_STILL
+  t_check_imu_still = std::thread(&CRos1IO::CheckImuStillThread, this);
 #endif
 
   use_imu_ = yaml_.use_imu;
@@ -148,29 +158,29 @@ void CRos1IO::CloseRosBag() {
   }
 }
 
-void CRos1IO::WriteBagThread()
-{
+void CRos1IO::WriteBagThread() {
   TStereoImage stereo_img_msg;
   sensor_msgs::ImuConstPtr imu_msg;
   while (1) {
-    
     if (!record_bag) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      continue ;
+      continue;
     }
 
     // if (!imu_queue.empty()) {
     while (!imu_queue.empty()) {
       imu_queue.pop(imu_msg);
       // handle data now.
-       bag_.write("/imu", imu_msg->header.stamp, *imu_msg);
+      bag_.write("/imu", imu_msg->header.stamp, *imu_msg);
     }
 
     if (!stereo_img_queue.empty()) {
       stereo_img_queue.pop(stereo_img_msg);
       // handle data now.
-      bag_.write("/image_left", stereo_img_msg.image0_ptr->header.stamp, *stereo_img_msg.image0_ptr);
-      bag_.write("/image_right", stereo_img_msg.image1_ptr->header.stamp, *stereo_img_msg.image1_ptr);
+      bag_.write("/image_left", stereo_img_msg.image0_ptr->header.stamp,
+                 *stereo_img_msg.image0_ptr);
+      bag_.write("/image_right", stereo_img_msg.image1_ptr->header.stamp,
+                 *stereo_img_msg.image1_ptr);
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -178,7 +188,6 @@ void CRos1IO::WriteBagThread()
 }
 
 #endif
-
 
 CRos1IO::~CRos1IO() {
   t_publish_myodom.detach();
@@ -189,7 +198,11 @@ CRos1IO::~CRos1IO() {
 #endif
   if (yaml_.record_bag) CloseRosBag();
   t_write_bag.detach();
-#endif  
+#endif
+
+#ifdef _IS_IMU_STILL
+  t_check_imu_still.detach();
+#endif
 }
 
 #ifdef _RECORD_BAG_
@@ -239,10 +252,11 @@ void CRos1IO::StereoCb(const sm::ImageConstPtr& image0_ptr,
     stereoImage.image1_ptr = image1_ptr;
     stereo_img_queue.push(stereoImage);
   }
-#endif  
+#endif
 
 #ifdef _IS_FORWARD_
-  if (isForward_ && !isForward_()) return;
+  // if (isForward_ && !isForward_()) return;
+  if (!GetForward()) return;
 #endif
 
   static u_int64_t prev_t_ns = 0;
@@ -336,7 +350,12 @@ void CRos1IO::StereoCb(const sm::ImageConstPtr& image0_ptr,
 
 void CRos1IO::imu_callback(const sensor_msgs::ImuConstPtr& imu_msg)  // const
 {
-#ifdef _RECORD_BAG_  
+
+#ifdef _IS_IMU_STILL
+  tmp_imu_queue_.push(imu_msg);
+#endif
+
+#ifdef _RECORD_BAG_
   // if(yaml_.record_bag)
   if (record_bag) {
     // if imu_callback is a const callback function, then i cant write anymore.
@@ -348,10 +367,11 @@ void CRos1IO::imu_callback(const sensor_msgs::ImuConstPtr& imu_msg)  // const
 
     imu_queue.push(imu_msg);
   }
-#endif  
+#endif
 
 #ifdef _IS_FORWARD_
-  if (isForward_ && !isForward_()) return;
+  // if (isForward_ && !isForward_()) return;
+  if (!GetForward()) return;
 #endif
 
   // double t = imu_msg->header.stamp.sec + imu_msg->header.stamp.nsec * (1e-9);
@@ -685,8 +705,7 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
     last_t_ns = data->t_ns - fps_inv * 1e9;
   }
 
-  if(last_pose.x() == 0 && last_pose.y() == 0)
-  {
+  if (last_pose.x() == 0 && last_pose.y() == 0) {
     last_pose.x() = data->T_w_i.translation().x();
     last_pose.y() = data->T_w_i.translation().y();
   }
@@ -711,15 +730,13 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
   //             << "  period_distance=" << period_distance
   //             << "  delta_s=" << delta_s << std::endl;
 
-  //   std::cout << "curr_pose" << curr_pose.transpose() << std::endl;          
-  //   std::cout << "last_pose" << last_pose.transpose() << std::endl;          
+  //   std::cout << "curr_pose" << curr_pose.transpose() << std::endl;
+  //   std::cout << "last_pose" << last_pose.transpose() << std::endl;
   // }
-
 
   last_pose = curr_pose;
 
   last_t_ns = data->t_ns;
-
 
 #ifdef _Linear_Fitted5_
   // double new_vel = delta_distance / delta_s;
@@ -1031,6 +1048,20 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
       is_reliable = false;
     }
 
+#ifdef _IS_IMU_STILL
+    // if(isStill_)// && prev_velocity < 1e-6 && publish_velocity < 0.5)
+    // if(isStill_ && prev_velocity < 1e-6 && publish_velocity < 0.5)
+    if(isStill_ && publish_velocity < 0.5)
+    {
+      publish_velocity = 0.0;
+    }
+#endif
+
+    if(isLightToggled) // for test.
+    {
+      publish_velocity = 0.0;
+    }
+
     if (publish_velocity <
         yaml_.zero_velocity)  // 0.05) // put here better than other place.
     {
@@ -1224,6 +1255,8 @@ void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data) {
 
   static cv::Mat disp_frame;
 
+  static int prev_intensity_of_max_count = -1;
+
 #ifdef _RESET_ALOGORITHM_BY_LAMP_ON_
   static bool is_reset_alogorithm_by_lamp_on = true;
 #endif
@@ -1260,17 +1293,56 @@ void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data) {
       // static int rev_cnt = 0;
       cv::Mat mask = disp_frame == 255;
       int count = cv::countNonZero(mask);
-      // if (count > 15)
-        // std::cout << "Number of intensity equal to 255 is " << count
-                  // << std::endl;
-        // more than 30 pixels with 255 denote lamp on.
+#ifdef _INTENSITY_OF_MAX_CNT_
+      // find maximum count of a intensity.
+      std::vector<int> vec_counter;
+      for(int i = 0; i < 256; i++)
+      {
+        cv::Mat mask = disp_frame == i;
+        int count = cv::countNonZero(mask);
+        vec_counter.emplace_back(count);
+      }
+      // std::sort(vec_counter.begin(), vec_counter.end());
+      int intensity = 0;
+      int max_count = vec_counter[0];
+      for(int i = 1; i < 256; i++)
+      {
+        if(vec_counter[i] > max_count)
+        {
+          intensity = i;
+          max_count = vec_counter[i];
+        }
+      }
+      // std::cout << "maximum count of a intensity is " << intensity << " it's count is" << max_count << std::endl;
 
-        // if(rev_cnt == 0)
-        // {
-        //   rev_cnt = count;
-        // }
-        // int nAverage = (rev_cnt + count) / 2;
-        // rev_cnt = count;
+      if(prev_intensity_of_max_count == -1)
+      {
+        prev_intensity_of_max_count = intensity;
+      }
+
+      if(abs(prev_intensity_of_max_count - intensity) >= 5)
+      {
+        // std::cout << "toggle light: " << " maximum count of a intensity is " << intensity << " it's count is" << max_count << std::endl;
+        std::cout << "toggle light: " << " curr intensity is " << intensity << " prev intensity is " << prev_intensity_of_max_count << std::endl;
+        isLightToggled = true;
+      }
+      else
+      {
+        isLightToggled = false;
+      }
+      prev_intensity_of_max_count = intensity;
+#endif
+      // if (count > 15)
+      // std::cout << "Number of intensity equal to 255 is " << count
+      // << std::endl;
+      // more than 30 pixels with 255 denote lamp on.
+
+      // if(rev_cnt == 0)
+      // {
+      //   rev_cnt = count;
+      // }
+      // int nAverage = (rev_cnt + count) / 2;
+      // rev_cnt = count;
 #else
       cv::Scalar meanValue = cv::mean(disp_frame);
       float MyMeanValue = meanValue.val[0];  //.val[0]表示第一个通道的均值
@@ -1513,3 +1585,174 @@ void CRos1IO::PublishFeatureImage(basalt::VioVisualizationData::Ptr data) {
     pub_warped_img.publish(*msg);
   }
 }
+
+#ifdef _IS_IMU_STILL
+void CRos1IO::CheckImuStillThread() {
+  std::vector<sensor_msgs::ImuConstPtr> vecTmpImuData;
+  constexpr int MAX_IMU_CNT = 20;  // 8;
+  constexpr int Continuous_number = 6;
+
+  static int nBig_acc_cnt = 0;
+  static int nSmall_acc_cnt = 0;
+  sensor_msgs::ImuConstPtr imu_msg;
+
+  // time_t vo_start_time;
+  while (true) {
+
+    vecTmpImuData.clear();
+    // m_imu_data.lock();
+    int nSize = tmp_imu_queue_.size();
+    if (nSize >= MAX_IMU_CNT) {
+      // vecTmpImuData.assign(vecImuData.begin(),
+      //                      vecImuData.begin() + MAX_IMU_CNT);
+      // vecImuData.clear();
+
+      
+      int i = 0;
+      while (!tmp_imu_queue_.empty()) {
+        tmp_imu_queue_.pop(imu_msg);
+        vecTmpImuData.emplace_back(imu_msg);
+        i++ ;
+        if(i == MAX_IMU_CNT)
+        {
+          break ;
+        }
+      }
+    }
+    // m_imu_data.unlock();
+
+    if (vecTmpImuData.size() == MAX_IMU_CNT) {
+        int i = 0;
+        double dx0 = 0, dy0 = 0, dz0 = 0, rx0 = 0, ry0 = 0, rz0 = 0;
+        double dx = 0, dy = 0, dz = 0, rx = 0, ry = 0, rz = 0;
+        double acc_sum = 0.0, ang_sum = 0.0;
+        double acc_aver = 0.0, ang_aver = 0.0;
+
+        for (auto& imu_msg : vecTmpImuData) {
+          // double t = imu_msg->header.stamp.toSec();
+
+          if (i == 0) {
+            dx0 = imu_msg->linear_acceleration.x;
+            dy0 = imu_msg->linear_acceleration.y;
+            dz0 = imu_msg->linear_acceleration.z;
+            rx0 = imu_msg->angular_velocity.x;
+            ry0 = imu_msg->angular_velocity.y;
+            rz0 = imu_msg->angular_velocity.z;
+          }
+
+          dx = imu_msg->linear_acceleration.x;
+          dy = imu_msg->linear_acceleration.y;
+          dz = imu_msg->linear_acceleration.z;
+          rx = imu_msg->angular_velocity.x;
+          ry = imu_msg->angular_velocity.y;
+          rz = imu_msg->angular_velocity.z;
+
+          Vector3d acc0(dx0, dy0, dz0), angular0(rx0, ry0, rz0);
+          Vector3d acc(dx, dy, dz), angular(rx, ry, rz);
+#if 1          
+          acc_sum += (acc - acc0).norm();
+          ang_sum += (angular - angular0).norm();
+
+#if 0
+          dx0 = dx;
+          dy0 = dy;
+          dz0 = dz;
+
+          rx0 = rx;
+          ry0 = ry;
+          rz0 = rz;
+#endif          
+
+#else
+          acc_sum += acc.norm();
+          ang_sum += angular.norm();
+#endif
+          i++;
+        }
+#if 1
+        acc_aver = acc_sum / (MAX_IMU_CNT - 1);
+        ang_aver = ang_sum / (MAX_IMU_CNT - 1);
+#else
+        acc_aver = acc_sum / MAX_IMU_CNT;
+        ang_aver = ang_sum / MAX_IMU_CNT;
+
+        acc_sum = 0.0;
+        ang_sum = 0.0;
+        for (auto& imu_msg : vecTmpImuData) {
+          dx = imu_msg->linear_acceleration.x;
+          dy = imu_msg->linear_acceleration.y;
+          dz = imu_msg->linear_acceleration.z;
+          rx = imu_msg->angular_velocity.x;
+          ry = imu_msg->angular_velocity.y;
+          rz = imu_msg->angular_velocity.z;
+
+          Vector3d acc(dx, dy, dz), angular(rx, ry, rz);
+          acc_sum += (acc.norm() - acc_aver) * (acc.norm() - acc_aver);
+          ang_sum += (angular.norm() - ang_aver) * (angular.norm() - ang_aver);
+
+        }
+
+        acc_aver = acc_sum / MAX_IMU_CNT;
+        ang_aver = ang_sum / MAX_IMU_CNT;
+#endif
+        if (yaml_.acc_zero_velocity > 0 && yaml_.ang_zero_velocity > 0) {
+          // if(acc_aver < 0.1 && ang_aver < 0.08) // for realsense.
+          if (acc_aver < yaml_.acc_zero_velocity &&
+              ang_aver < yaml_.ang_zero_velocity/**/)
+          {
+            nSmall_acc_cnt++;
+            if(nSmall_acc_cnt > Continuous_number)
+            {
+              if (!isStill_) {
+                // cout << "active 2 inactive: average of accelerate is " <<
+                // acc_aver << " average of angular speed is " << ang_aver <<
+                // std::endl;
+
+                std::cout << "active 2 inactive: acc_aver= " << acc_aver
+                    << " ang_aver= " << ang_aver
+                    << std::endl;
+              }
+
+              isStill_ = true;
+              nSmall_acc_cnt = 0;
+            }
+
+            nBig_acc_cnt = 0;
+
+          } else {
+            nBig_acc_cnt++;
+            // if(nBig_acc_cnt > 2)
+            if (nBig_acc_cnt > Continuous_number)  // && g_new_feature_cnt > 20)
+            {
+              if (isStill_) {
+                // cout << "inactive 2 active: average of accelerate is " <<
+                // acc_aver << " average of angular speed is " << ang_aver <<
+                // std::endl;
+
+                std::cout << "inactive 2 active: acc_aver= " << acc_aver
+                     << " ang_aver= " << ang_aver
+                     << std::endl;
+              }
+
+              isStill_ = false;
+
+              nBig_acc_cnt = 0;
+            }
+
+            nSmall_acc_cnt = 0;
+          }
+        }
+
+        std::cout << " average of accelerate is " << acc_aver 
+          << " average of angular speed is " << ang_aver << std::endl;
+
+
+        // std::cout << " variance of accelerate is " << acc_aver 
+        //   << " variance of angular speed is " << ang_aver << std::endl;  
+
+      }
+
+    usleep(5000);  // sleep 5 ms
+  }
+}
+#endif
