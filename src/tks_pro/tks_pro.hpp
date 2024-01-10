@@ -21,7 +21,7 @@
 class Tks_pro{
 public:
     Tks_pro(ros::NodeHandle& nh, const TYamlIO &yaml) : yaml_(yaml) {
-         ROS_INFO("=====================version 2023-12-28=====================");
+         ROS_INFO("=====================version 2024-1-10=====================");
         // 调用函数获取当前系统时间并输出
         std::string currentTimeString = getCurrentSystemTime();
         line_vio = 1,line_atp = 1;
@@ -152,6 +152,8 @@ private:
         atp_info_p.beacon_id = msg->beacon_id;
         atp_info_p.beacon_odom = msg->beacon_odom;
         udp_recv_flag = 0;
+
+        if(atp_cb_) atp_cb_(*msg);
     }
 
     void atp_info_publish(){
@@ -171,6 +173,8 @@ private:
         atp_info_pub.publish(atp_info_p);
         vio_udp_->read_atp_info.unlock(); 
         udp_recv_flag = 0;
+
+        if(atp_cb_) atp_cb_(atp_info_p);
     }
 
     //200ms定时发送信息
@@ -312,6 +316,9 @@ private:
     bool change_ends_flag;
     bool is_forward;
     TYamlIO yaml_;
+
+public:
+    std::function<void(atp_info::atp&)> atp_cb_ { nullptr };
 };
 
 

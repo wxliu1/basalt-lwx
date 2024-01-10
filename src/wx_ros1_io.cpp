@@ -163,6 +163,7 @@ void CRos1IO::CloseRosBag() {
 void CRos1IO::WriteBagThread() {
   TStereoImage stereo_img_msg;
   sensor_msgs::ImuConstPtr imu_msg;
+  atp_info::atp atp_msg;
   while (1) {
     if (!record_bag) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -183,6 +184,13 @@ void CRos1IO::WriteBagThread() {
                  *stereo_img_msg.image0_ptr);
       bag_.write("/image_right", stereo_img_msg.image1_ptr->header.stamp,
                  *stereo_img_msg.image1_ptr);
+    }
+
+    // write atp info. into bag file.
+    if (!atp_queue.empty()) {
+      atp_queue.pop(atp_msg);
+      // handle data now.
+      bag_.write("/atp_info", atp_msg.header.stamp, atp_msg);
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -409,6 +417,16 @@ void CRos1IO::imu_callback(const sensor_msgs::ImuConstPtr& imu_msg)  // const
   sprintf(szTime, "%f", t);
   // std::cout << "[lwx] imu timestamp t=" << szTime << "acc = " << acc.transpose() << "  gyr = " << gyr.transpose() << std::endl;
   std::cout << "[lwx] imu timestamp t=" << szTime << "acc = " << data->accel.transpose() << "  gyr = " << data->gyro.transpose() << std::endl;
+#endif
+}
+
+void CRos1IO::atp_cb(atp_info::atp& atp_msg)
+{
+#ifdef _RECORD_BAG_
+  // if(yaml_.record_bag)
+  if (record_bag) {
+    atp_queue.push(atp_msg);
+  }
 #endif
 }
 

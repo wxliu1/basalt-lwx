@@ -41,6 +41,8 @@
 
 #include <myodom/MyOdom.h>
 
+#include <atp_info/atp.h>
+
 #include "wx_yaml_io.h"
 
 // #include "kalman_filter.h"
@@ -103,6 +105,8 @@ public:
 
     void SetForward(bool bl) { is_Forward_ = bl; }
     inline bool GetForward() { return is_Forward_; }
+
+    void atp_cb(atp_info::atp& atp_msg);
 
 private: 
     void PublishMyOdomThread();
@@ -258,6 +262,8 @@ private:
     std::mutex m_rec_;
     tbb::concurrent_bounded_queue<TStereoImage> stereo_img_queue;
     tbb::concurrent_bounded_queue<sensor_msgs::ImuConstPtr> imu_queue;
+    // tbb::concurrent_bounded_queue<atp_info::atpPtr> atp_queue; // atp_info::atp
+    tbb::concurrent_bounded_queue<atp_info::atp> atp_queue; // atp_info::atp
     std::thread t_write_bag;
     std::thread t_record_bag;
     #endif

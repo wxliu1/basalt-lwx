@@ -31,6 +31,10 @@ data_display: false
 bag_flag: true
 atp_id: 4865
 
+record_bag: false # false - indicate manual mode which means press 'w' to start and 'x' to stop recording bag file.
+record_duration: 180 # the duration of recording bag in automatic mode.The unit is seconds 
+output_log: true
+
 confidence_interval: 
    tracked_points: [30]
    confidence_levels: [0.0]

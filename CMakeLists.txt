@@ -9,6 +9,11 @@ add_definitions(-D_WX_TEST) # define '_WX_TEST' macro
 # add_compile_definitions(SHOW_FLOW_PATCHES)
 add_definitions(-DSHOW_TRACKED_POINTS)
 
+string(TIMESTAMP PROJECT_VERSION_REVISION "%Y%m%d%H%M")
+message(STATUS "PROJECT_VERSION_REVISION = ${PROJECT_VERSION_REVISION}")
+# add_compile_definitions(_PROGRAM_VERSION_ = ${PROJECT_VERSION_REVISION})
+add_compile_definitions(_PROGRAM_VERSION_=${PROJECT_VERSION_REVISION})
+
 
 # if atp.msg contain atp_id or not, please turn ON or OFF the option 'ADD_ATP_ID'.
 
@@ -450,6 +455,8 @@ add_executable(stereo3
   src/utility/utility.cpp
   # src/kalman_filter.cpp
   # the end.
+
+  src/util/compile_date_time.cpp
 )
 
 target_link_libraries(stereo3
@@ -465,6 +472,11 @@ target_link_libraries(stereo3
 target_include_directories(stereo3 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_definitions(stereo3 PUBLIC ${BASALT_COMPILE_DEFINITIONS})
 
+add_custom_command(
+    TARGET stereo3
+    PRE_BUILD
+    COMMAND touch ${CMAKE_CURRENT_SOURCE_DIR}/src/util/compile_date_time.cpp
+)
 
 #############
 ## Install ##

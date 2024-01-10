@@ -83,6 +83,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <topic_tools/shape_shifter.h>
 #endif
 
+#include "util/compile_date_time.h"
+
 using namespace wx;
 
 #define _SHOW_POINTS
@@ -606,7 +608,19 @@ int main(int argc, char** argv) {
     wx::TFileSystemHelper::createDirectoryIfNotExists(szModulePath);
     // wx::TFileSystemHelper::CreateDir(szModulePath);
 
+  #ifdef _PROGRAM_VERSION_  
+    std::cout<< "PROJECT_VERSION_REVISION=" << _PROGRAM_VERSION_ << std::endl;
+    // char szLog[256] = "_PROGRAM_VERSION_"; //{ 0 };
+    // sprintf(szLog, "\nprogram_version_revision = %s", *_PROGRAM_VERSION_);
+    // wx::TFileSystemHelper::WriteLog(szLog);
+  #endif 
+
     wx::TFileSystemHelper::WriteLog("main()");
+    char szLog[256] = { 0 };
+    // sprintf(szLog, "program_version_revision = %s_%s", __DATE__, __TIME__);
+    sprintf(szLog, "program_version_revision = %s", g_build_date_time);
+    wx::TFileSystemHelper::WriteLog(szLog);
+
   }
 
   std::thread keyboard_command_process;
@@ -757,6 +771,8 @@ int main(int argc, char** argv) {
     // std::thread reset_process;
     reset_process = std::thread(reset_algorithm_thread, &yaml);
     // reset_process.join();
+
+    tks_pro->atp_cb_ = std::bind(&wx::CRos1IO::atp_cb, &node, std::placeholders::_1);
 
   }
 
