@@ -530,6 +530,8 @@ void CRos1IO::Reset() {
   std::cout << "clear path_msg_.poses" << std::endl;
   path_msg_.poses.clear();
   path_msg_.poses.reserve(1024);
+
+  isResetOdom = true; // 2024-1-11
 }
 
 void CRos1IO::PublishPoseAndPath(basalt::PoseVelBiasState<double>::Ptr data) {
@@ -703,22 +705,25 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
 #endif
 
   if (isResetOdom) {
-    std::cout << std::boolalpha << "isResetOdom=" << isResetOdom << std::endl;
-    wx::TFileSystemHelper::WriteLog("reset odom.");
-    prev_velocity = 0.0;
-    period_distance = 0.0;
-    total_distance = 0.0;
-    last_t_ns = 0;
-    t_ns = 0;
-    total_odom = 0.0;
-    last_pose.x() = 0;
-    last_pose.y() = 0;
-#ifdef _MULTI_VELOCITY_FILTER_
-    keep_count = 0;
-    reset_cnt = 0;
-#endif
+    if(fabs(data->T_w_i.translation().x()) < 1e-6 && fabs(data->T_w_i.translation().y()) < 1e-6)
+    {
+      std::cout << std::boolalpha << "isResetOdom=" << isResetOdom << std::endl;
+      wx::TFileSystemHelper::WriteLog("reset odom.");
+      prev_velocity = 0.0;
+      period_distance = 0.0;
+      total_distance = 0.0;
+      last_t_ns = 0;
+      t_ns = 0;
+      total_odom = 0.0;
+      last_pose.x() = 0;
+      last_pose.y() = 0;
+  #ifdef _MULTI_VELOCITY_FILTER_
+      keep_count = 0;
+      reset_cnt = 0;
+  #endif
 
-    isResetOdom = false;
+      isResetOdom = false;
+    }
   }
 
   if (t_ns == 0) {
@@ -729,6 +734,8 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
   if (last_pose.x() == 0 && last_pose.y() == 0) {
     last_pose.x() = data->T_w_i.translation().x();
     last_pose.y() = data->T_w_i.translation().y();
+
+    wx::TFileSystemHelper::WriteLog("begin to reset last pose.");
   }
 
   Vector2d curr_pose;
@@ -754,6 +761,19 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
   //   std::cout << "curr_pose" << curr_pose.transpose() << std::endl;
   //   std::cout << "last_pose" << last_pose.transpose() << std::endl;
   // }
+
+#if 1
+  char szLog[512] = { 0 };
+  // sprintf(szLog, "last_pose=(%.2f, %.2f), curr_pose=(%.2f, %.2f), delta_distance=%.2f, time interval=%.2f", 
+  //   last_pose.x(), last_pose.y(), curr_pose.x(), curr_pose.y(), delta_distance, delta_s);
+
+  // sprintf(szLog, "prev_p=(%.2f, %.2f), curr_p=(%.2f, %.2f), delta_s=%.2f", 
+  //   last_pose.x(), last_pose.y(), curr_pose.x(), curr_pose.y(), delta_s);
+
+  sprintf(szLog, "p=(%.2f, %.2f), delta_d=%.2f, delta_s=%.2f", curr_pose.x(), curr_pose.y(), delta_distance, delta_s);
+
+  wx::TFileSystemHelper::WriteLog(szLog);
+#endif
 
   last_pose = curr_pose;
 
@@ -812,6 +832,17 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
 
     if (keep_count < ELEM_CNT) {
       array_velocity[keep_count++] = period_distance / delta_s;
+
+      #if 1
+      if((period_distance / delta_s) > yaml_.abnormal_velocity)
+      {
+        char szLog[256] = { 0 };
+        sprintf(szLog, " period_distance=%.2f, delta_s=%.2f", period_distance, delta_s);
+        wx::TFileSystemHelper::WriteLog(szLog);
+      }
+      #endif
+
+
     } else {
       int i = 0;
       for (i = 0; i < ELEM_CNT - 1; i++) {
@@ -968,6 +999,34 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
 
 #endif
 
+
+    if (publish_velocity > yaml_.abnormal_velocity) {
+      std::cout << "The speed " << publish_velocity
+                << " is ABNORMAL. reset algorithm." << std::endl;
+
+      // std::cout << std::boolalpha << "isResetOdom=" << isResetOdom << std::endl;
+
+      char szLog[256] = { 0 };
+      sprintf(szLog, "The velocity '%.2f' is ABNORMAL. reset algorithm.", publish_velocity);
+      wx::TFileSystemHelper::WriteLog(szLog);
+
+      prev_velocity = 0.0;
+      period_distance = 0.0;
+      total_distance = 0.0;
+      last_t_ns = 0;
+      t_ns = 0;
+      total_odom = 0.0;
+      last_pose.x() = 0;
+      last_pose.y() = 0;
+    #ifdef _MULTI_VELOCITY_FILTER_
+      keep_count = 0;
+      reset_cnt = 0;
+    #endif
+
+      reset_();
+      return;
+    }
+
 #ifdef _MULTI_VELOCITY_FILTER_
 
 #if 1
@@ -1005,6 +1064,11 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
 
     if (publish_velocity > 200.0 / 9)  // 80 km/h limit
     {
+      #if 1
+      char szLog[256] = { 0 };
+      sprintf(szLog, "80 km/h limit. v > 200.0 / 9: publish_velocity=%.2f, prev_velocity=%.2f", publish_velocity, prev_velocity);
+      wx::TFileSystemHelper::WriteLog(szLog);
+      #endif
       publish_velocity = prev_velocity;
       // if(keep_count >= 1)
       array_velocity[keep_count - 1] = publish_velocity;
@@ -1099,41 +1163,19 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
       slowVelocity_(false);
     }
 
+
+    
+
+
     prev_velocity = publish_velocity;
 
     double period_odom = publish_velocity * delta_s;
     total_odom += period_odom;
 
-    if (publish_velocity > yaml_.abnormal_velocity) {
-      std::cout << "The speed " << publish_velocity
-                << " is ABNORMAL. reset algorithm." << std::endl;
 
-      std::cout << std::boolalpha << "isResetOdom=" << isResetOdom << std::endl;
-
-      char szLog[256] = { 0 };
-      sprintf(szLog, "The velocity '%.2f' is ABNORMAL. reset algorithm.", publish_velocity);
-      wx::TFileSystemHelper::WriteLog(szLog);
-
-      prev_velocity = 0.0;
-      period_distance = 0.0;
-      total_distance = 0.0;
-      last_t_ns = 0;
-      t_ns = 0;
-      total_odom = 0.0;
-      last_pose.x() = 0;
-      last_pose.y() = 0;
-#ifdef _MULTI_VELOCITY_FILTER_
-      keep_count = 0;
-      reset_cnt = 0;
-#endif
-
-      reset_();
-      return;
-    }
-
-    char szLog[256] = { 0 };
-    sprintf(szLog, "publish velocity: %.2f", publish_velocity);
-    wx::TFileSystemHelper::WriteLog(szLog);
+    // char szLog[256] = { 0 };
+    // sprintf(szLog, "publish velocity: %.2f", publish_velocity);
+    // wx::TFileSystemHelper::WriteLog(szLog);
 
     // if (pub_my_odom_.getNumSubscribers() > 0)
     {

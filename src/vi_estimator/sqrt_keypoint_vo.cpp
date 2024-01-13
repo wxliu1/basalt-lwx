@@ -53,6 +53,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <chrono>
 
+#include "../wx_system.h"
+
 // 2023-11-13
 #if 1
 #include "../imu/imu_process.h"
@@ -316,7 +318,7 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
         prev_frame = nullptr;
         SetResetAlgorithm(false);
         std::cout << "reset backend thread.\n";
-
+        wx::TFileSystemHelper::WriteLog("reset algorithm completed.");
       }
       
       // get next optical flow result (blocking if queue empty) 获取光流结果，如果队列为空会阻塞
@@ -357,6 +359,12 @@ void SqrtKeypointVoEstimator<Scalar_>::initialize(const Eigen::Vector3d& bg,
       if (!initialized) { // initialized初始为false. 第一帧初始化
         // std::cout << " back end init. " << std::boolalpha << "add_pose=" << add_pose << " prev_frame=" << prev_frame << std::endl;
         std::cout << " back end init. " << " first cam0 observation count: " << curr_frame->observations[0].size() << std::endl;
+        #if 1
+        char szLog[512] = { 0 };
+        sprintf(szLog, "back end init.  first cam0 observation count: %d", curr_frame->observations[0].size());
+         wx::TFileSystemHelper::WriteLog(szLog);
+        #endif
+
         last_state_t_ns = curr_frame->t_ns; // 图像时间戳
 
         frame_poses[last_state_t_ns] =
@@ -500,7 +508,15 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   // 2023-11-15.
   int cam0_num_observations = opt_flow_meas->observations[0].size();
   if(cam0_num_observations < MIN_OBSERVATIONS)
-  std::cout << "cam0 observation count: " << opt_flow_meas->observations[0].size() << std::endl;
+  {
+    std::cout << "cam0 observation count: " << opt_flow_meas->observations[0].size() << std::endl;
+    #if 1
+    char szLog[512] = { 0 };
+    sprintf(szLog, "cam0 observation count: %d", opt_flow_meas->observations[0].size());
+    wx::TFileSystemHelper::WriteLog(szLog);
+    #endif
+  }
+  
   // the end.
   
 
@@ -747,10 +763,16 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   {
     std::cout << "[lwx] BIG translation.\n";
     isBigTranslation = true;
+
+    #if 1
+    wx::TFileSystemHelper::WriteLog("BIG translation.");
+    #endif
   }
   // the end.
 
   // std::cout << std::boolalpha << "converged=" << converged << std::endl;
+
+#ifdef _USE_IMU_POSE_ // just for tks.  
   // 2023-11-13
   if (sys_cfg_.use_imu) 
   {
@@ -765,6 +787,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
     // if(cam0_num_observations < 6)
     {
       std::cout << std::boolalpha << "converged=" << converged << std::endl;
+
       if (g_imu->GetSolverFlag() == INITIAL) 
       {
         g_imu->SetUseImuPose(false);
@@ -782,6 +805,12 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
       else
       {
         g_imu->SetUseImuPose(true);
+
+        #if 1
+        char szLog[256] = { 0 };
+        sprintf(szLog, "converged=%d, set use imu pose = true.", converged);
+        wx::TFileSystemHelper::WriteLog(szLog);
+        #endif 
       }
 
       if (!g_imu->UseImuPose()) 
@@ -809,9 +838,11 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
 
   }
 
+
   if(g_imu->UseImuPose())
   {
     std::cout << "CalcImuPose \n";
+    wx::TFileSystemHelper::WriteLog("CalcImuPose");
     Sophus::SE3d tf_new;
     constexpr bool camToWorld = true;
     g_imu->CalcImuPose(tf_new, camToWorld);
@@ -820,8 +851,12 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
     p.setPose(Twi);
     
   }
+#endif
+  
   // the end.
 #endif
+
+
 /*
  * 2023-12-8
  * comment this section, because i want to take some variables with out_state_queue like confidence coefficient 
@@ -870,6 +905,12 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
     nOptFlowPatches = data->opt_flow_res->observations[0].size();
   }
 
+  if(isBigTranslation || ((converged != 1) && cam0_num_observations < MIN_OBSERVATIONS) || (converged == 2) || (nTrackedPoints < 6)  || g_imu->UseImuPose())
+  {
+    PoseStateWithLin<Scalar>& p = frame_poses.at(last_state_t_ns);
+    p.setPose(T_w_i_prev);
+  }
+
   // out_state_queue move here 2023-12-8
   if (out_state_queue) {
     // 取出当前帧的状态量（时间戳，位姿，速度，bg, ba）存入输出状态队列，用于在pangolin上的显示
@@ -900,10 +941,20 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   stats_sums_.add("measure", t_total.elapsed()).format("ms"); // 统计measure函数消耗的时间
 
   // if(g_imu->UseImuPose()) // 2023-11-20 10:22
-  if(nTrackedPoints < 6 || g_imu->UseImuPose()) // test on 2023-12-20.
+  // if(nTrackedPoints < 6 || g_imu->UseImuPose()) // test on 2023-12-20.
+  if(isBigTranslation || ((converged != 1) && cam0_num_observations < MIN_OBSERVATIONS) || (converged == 2) || (nTrackedPoints < 6)  || g_imu->UseImuPose())
   {
-    std::cout << std::boolalpha << "begin reset algorithm." << " tracked points: " << nTrackedPoints 
-      << " Is use imu pose? " << g_imu->UseImuPose() << std::endl;
+    // std::cout << std::boolalpha << "begin reset algorithm." << " tracked points: " << nTrackedPoints 
+    //   << " Is use imu pose? " << g_imu->UseImuPose() << std::endl;
+
+    // 
+    char szLog[512] = { 0 };
+    sprintf(szLog, "begin reset algorithm. converged=%d, cam0_num_observations=%d, tracked points=%d, isBigTranslation=%d, UseImuPose=%d", 
+      converged, cam0_num_observations, nTrackedPoints, isBigTranslation, g_imu->UseImuPose());
+    wx::TFileSystemHelper::WriteLog(szLog);
+
+    std::cout << std::boolalpha << szLog << std::endl;
+
     reset_(); 
     return false;
   }
@@ -1623,6 +1674,7 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
         if(l_diff < -1e-7 || !inc.array().isFinite().all()) 
         {
           std::cout << "infinite, iteration abnormal.\n";
+          wx::TFileSystemHelper::WriteLog("Numerical failure in backsubstitution. infinite, iteration abnormal.");
           retval = 2;
           return retval;
         }

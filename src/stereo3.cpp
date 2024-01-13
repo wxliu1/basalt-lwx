@@ -268,7 +268,7 @@ void Reset()
   // the end.
 */
 
-  wx::TFileSystemHelper::WriteLog("try to reset alogorithm.");
+  wx::TFileSystemHelper::WriteLog("try to reset algorithm.");
 
   // Make sure it's safe
   if(!vio->GetResetAlgorithm())
@@ -276,12 +276,12 @@ void Reset()
     vio->SetResetAlgorithm(true);
     if(vio->GetResetAlgorithm())
     opt_flow_ptr->Reset();
-     wx::TFileSystemHelper::WriteLog("reset alogorithm completed.");
+    // wx::TFileSystemHelper::WriteLog("reset algorithm completed.");
   }
   else
   {
-    std::cout << "reset alogorithm is not complete yet." << std::endl;
-    wx::TFileSystemHelper::WriteLog("reset alogorithm is not complete yet.");
+    std::cout << "reset algorithm is not complete yet." << std::endl;
+    wx::TFileSystemHelper::WriteLog("reset algorithm is not complete yet.");
   }
   
 
@@ -302,6 +302,7 @@ void ClearPose()
   else
   {
     std::cout << "reset alogorithm is not complete yet." << std::endl;
+    wx::TFileSystemHelper::WriteLog("reset algorithm is not complete yet.");
   }
 }
 
@@ -320,12 +321,14 @@ void command(TYamlIO *yaml)
     // if (strInput == "reboot stereo3")
     {
       std::cout << "press 'r' to reset algorithm" << std::endl;
+      wx::TFileSystemHelper::WriteLog("press 'r' to reset algorithm");
       Reset();
       std::cout << "reset command over." << std::endl;
     }
     else if('c' == c)
     {
       std::cout << "press 'c' to clear pose & reset algorithm" << std::endl;
+      wx::TFileSystemHelper::WriteLog("press 'c' to clear pose & reset algorithm");
       ClearPose();
       std::cout << "clear command over." << std::endl;
     }
@@ -338,6 +341,7 @@ void command(TYamlIO *yaml)
         if (!yaml->record_bag)
         {
           std::cout << "press 'w' to write bag" << std::endl;
+          wx::TFileSystemHelper::WriteLog("press 'w' to write bag");
           if(openRosbag_)
           openRosbag_();
         }
@@ -351,6 +355,7 @@ void command(TYamlIO *yaml)
         if(!yaml->record_bag)
         {
           std::cout << "press 'x' to close bag" << std::endl;
+          wx::TFileSystemHelper::WriteLog("press 'x' to close bag");
           if(closeRosBag_)
           closeRosBag_();
         }
@@ -359,6 +364,21 @@ void command(TYamlIO *yaml)
           std::cout << "now is automatic record bag mode. can't close bag manually." << std::endl;
         }
       }
+      else if(c == 'f')
+      {
+        std::cout << "press 'f' to set forward" << std::endl;
+        wx::TFileSystemHelper::WriteLog("press 'f' to set forward");
+        setForward_(true);
+      }
+
+      else if(c == 'b')
+      {
+        std::cout << "press 'b' to set backward" << std::endl;
+        wx::TFileSystemHelper::WriteLog("press 'b' to set backward");
+        setForward_(false);
+      }
+
+
     }
     
     #endif
@@ -388,13 +408,16 @@ void reset_algorithm_thread(TYamlIO *yaml)
         std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000 * yaml->change_end_wait_time)));
         is_forward = true;
         std::cout << "because of 'is_forward' changed from false to true, we start to reset algorithm." << std::endl;
-        Reset();
+        ClearPose(); // Reset() -> ClearPose()
         setForward_(true);
+        /*
+         * reset odom flag in sqrt_keypoint_vo.cpp
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         if(resetPublishedOdom_)
         {
           resetPublishedOdom_();
         }
+        */
       }
     }
     else
