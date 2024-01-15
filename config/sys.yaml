@@ -35,6 +35,18 @@ record_bag: false # false - indicate manual mode which means press 'w' to start 
 record_duration: 180 # the duration of recording bag in automatic mode.The unit is seconds 
 output_log: true
 
+photometric_calibration: false
+image_width: 640
+image_height: 528
+
+camera1:
+  gamma: "/root/photometric_calibration/44/pcalib1.txt"
+  vignette: "/root/photometric_calibration/44/vignette1.png"
+  
+camera2:
+  gamma: "/root/photometric_calibration/44/pcalib2.txt"
+  vignette: "/root/photometric_calibration/44/vignette2.png"
+
 confidence_interval: 
    tracked_points: [30]
    confidence_levels: [0.0]

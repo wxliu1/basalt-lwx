@@ -130,7 +130,7 @@ std::condition_variable vio_cv;
 bool step_by_step = false;
 size_t max_frames = 0;
 
-std::atomic<bool> terminate = false;
+std::atomic<bool> g_terminate = false;
 
 // VIO variables
 basalt::Calibration<double> calib;
@@ -194,7 +194,7 @@ void feedImu(basalt::ImuData<double>::Ptr data)
 void sigintHandler(int sig) {
     
     printf("sig=%d\n",sig);
-    terminate = true;
+    g_terminate = true;
     signal(sig,SIG_DFL);//设置收到信号SIGINT采取默认方式响应（ctrl+c~结束进程）
     
     // 执行特定的中断处理操作
@@ -209,13 +209,13 @@ void stop()
   std::cout << "stop\n";
   vio->imu_data_queue.push(nullptr);
   opt_flow_ptr->input_queue.push(nullptr);
-  terminate = true;
+  g_terminate = true;
 
-    // if (terminate.load() == false) 
+    // if (g_terminate.load() == false) 
     // {
     //   vio->imu_data_queue.push(nullptr);
     //   opt_flow_ptr->input_queue.push(nullptr);
-    //   terminate.store(true);
+    //   g_terminate.store(true);
     // }
 }
 // the end.
@@ -814,7 +814,7 @@ int main(int argc, char** argv) {
     t3.reset(new std::thread([&]() {
       basalt::VioVisualizationData::Ptr data;
       //while (true) {
-      while (!terminate) {
+      while (!g_terminate) {
         out_vis_queue.pop(data); // 当队列中数据为空时，该并发队列处于阻塞状态。
 
         if (data.get()) {
@@ -836,7 +836,7 @@ int main(int argc, char** argv) {
     basalt::PoseVelBiasState<double>::Ptr data;
 
     //while (true) {
-    while (!terminate) {
+    while (!g_terminate) {
       out_state_queue.pop(data);
 
       if (!data.get()) break;
@@ -862,7 +862,7 @@ int main(int argc, char** argv) {
 
   if (yaml.print_queue) { // cli参数，默认false.用于打印队列的size.
     t5.reset(new std::thread([&]() {
-      while (!terminate) {
+      while (!g_terminate) {
         print_queue_fn();
         std::this_thread::sleep_for(std::chrono::seconds(1));
       }
@@ -892,8 +892,8 @@ int main(int argc, char** argv) {
   t2.join();
 */
 
-  // std::cout << "Data input finished, terminate auxiliary threads.";
-  terminate = true;
+  // std::cout << "Data input finished, g_terminate auxiliary threads.";
+  g_terminate = true;
 
   // join other threads
   // if (t3) t3->join(); // comment 2023-11-14.

@@ -45,6 +45,8 @@
 
 #include "wx_yaml_io.h"
 
+#include "undistorted_photometric.h"
+
 // #include "kalman_filter.h"
 
 //#include <Eigen/Dense>
@@ -275,6 +277,8 @@ private:
 
     bool isLightToggled { false };
     bool is_Forward_ { false };
+
+    undist_lite* img_undistorter { nullptr };
 
 /*
  * minimal publisher and subscriber

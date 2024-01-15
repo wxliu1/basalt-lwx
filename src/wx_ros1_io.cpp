@@ -46,6 +46,13 @@ CRos1IO::CRos1IO(const ros::NodeHandle& pnh, const TYamlIO& yaml) noexcept
 // , sync_stereo_(sub_image0_, sub_image1_, sub_image0_info_, sub_image1_info_,
 // 10) // method 1
 {
+
+  if(yaml_.photometric_calibration)
+  {
+    img_undistorter = new undist_lite(yaml_.image_width, yaml_.image_height, 
+      yaml_.gamma1, yaml_.vignette1, yaml_.gamma2, yaml_.vignette2);
+  }
+
 #ifdef _KF_
   // Kalman_Filter_Init(&kalman_filter_pt1, 0.001, 2, 25, 1);
   Kalman_Filter_Init(&kalman_filter_pt1, 0.001, 2, 0, 1);
@@ -61,7 +68,14 @@ CRos1IO::CRos1IO(const ros::NodeHandle& pnh, const TYamlIO& yaml) noexcept
             << "mean_value = " << yaml_.mean_value << std::endl
             << "number_of_255 = " << yaml_.number_of_255 << std::endl
             << "record_bag = " << yaml_.record_bag << std::endl
-            << "record_duration = " << yaml_.record_duration << std::endl;
+            << "record_duration = " << yaml_.record_duration << std::endl
+            << "photometric_calibration = " << yaml_.photometric_calibration << std::endl
+            << "image_width = " << yaml_.image_width << std::endl
+            << "image_height = " << yaml_.image_height << std::endl
+            << "gamma1 = " << yaml_.gamma1 << std::endl
+            << "vignette1 = " << yaml_.vignette1 << std::endl
+            << "gamma2 = " << yaml_.gamma2 << std::endl
+            << "vignette2 = " << yaml_.vignette2 << std::endl;
 
   int cnt = yaml_.vec_tracked_points.size();
   std::string strConfidenceInterval = "tracked_points:[";
@@ -311,8 +325,38 @@ void CRos1IO::StereoCb(const sm::ImageConstPtr& image0_ptr,
   // cv::waitKey(0);
   // return ;
 #else
-  data_in0 = (const uint8_t*)image0_ptr->data.data();
-  data_in1 = (const uint8_t*)image1_ptr->data.data();
+  if (yaml_.photometric_calibration) {
+    auto image0 = cb::toCvCopy(image0_ptr)->image;
+    auto image1 = cb::toCvCopy(image1_ptr)->image;
+
+    if (image0.type() == CV_8UC3) {
+      cv::cvtColor(image0, image0, cv::COLOR_BGR2GRAY);
+    }
+    if (image0.type() != CV_8U) {
+      printf("image0 did something strange! this may segfault. %i \n",
+            image0.type());
+      return;
+    }
+
+    if (image1.type() == CV_8UC3) {
+      cv::cvtColor(image1, image1, cv::COLOR_BGR2GRAY);
+    }
+    if (image1.type() != CV_8U) {
+      printf("image1 did something strange! this may segfault. %i \n",
+            image1.type());
+      return;
+    }
+
+    img_undistorter->undist(image0, image1);
+
+    data_in0 = image0.ptr();
+    data_in1 = image1.ptr();
+  }
+  else
+  {
+    data_in0 = (const uint8_t*)image0_ptr->data.data();
+    data_in1 = (const uint8_t*)image1_ptr->data.data();
+  }
 #endif
 
 #if 0  // for check bright points

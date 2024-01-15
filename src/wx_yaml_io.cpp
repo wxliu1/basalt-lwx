@@ -75,6 +75,14 @@ void TYamlIO::ReadConfiguration()
     config["ang_zero_velocity"] = ang_zero_velocity;
     config["change_end_wait_time"] = change_end_wait_time;
     config["output_log"] = output_log;
+    config["photometric_calibration"] = photometric_calibration;
+
+    config["camera1"]["gamma"] = gamma1;
+    config["camera1"]["vignette"] = vignette1;
+
+    config["camera2"]["gamma"] = gamma2;
+    config["camera2"]["vignette"] = vignette2;
+
 /*
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
                               0.0, 1.0, 0.0, 0.0,
@@ -181,6 +189,22 @@ void TYamlIO::ReadConfiguration()
 
     if(config["output_log"].Type() == YAML::NodeType::Scalar)
     output_log = config["output_log"].as<bool>();
+
+    if(config["photometric_calibration"].Type() == YAML::NodeType::Scalar)
+    photometric_calibration = config["photometric_calibration"].as<bool>();
+
+    // read photometric calibration file path.
+    if(config["camera1"]["gamma"].Type() == YAML::NodeType::Scalar)
+    gamma1 = config["camera1"]["gamma"].as<std::string>();
+
+    if(config["camera1"]["vignette"].Type() == YAML::NodeType::Scalar)
+    vignette1 = config["camera1"]["vignette"].as<std::string>();
+
+    if(config["camera2"]["gamma"].Type() == YAML::NodeType::Scalar)
+    gamma2 = config["camera2"]["gamma"].as<std::string>();
+
+    if(config["camera2"]["vignette"].Type() == YAML::NodeType::Scalar)
+    vignette2 = config["camera2"]["vignette"].as<std::string>();
 
     // read imu_cam extrinsic
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,

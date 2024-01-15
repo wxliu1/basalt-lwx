@@ -64,6 +64,16 @@ struct TYamlIO
     double ang_zero_velocity { 0.003 };
     double change_end_wait_time { 1.0 }; // in seconds.
     bool output_log { true };
+    bool photometric_calibration { false };
+
+    std::string gamma1 {};
+    std::string vignette1 {};
+
+    std::string gamma2 {};
+    std::string vignette2 {};
+
+    int image_width { 640 };
+    int image_height { 528 };
 
     void ReadConfiguration();
 #ifdef _NEED_WRITE_YAML    

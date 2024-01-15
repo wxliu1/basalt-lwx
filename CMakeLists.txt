@@ -457,6 +457,7 @@ add_executable(stereo3
   # the end.
 
   src/util/compile_date_time.cpp
+  src/undistorted_photometric.cpp
 )
 
 target_link_libraries(stereo3
