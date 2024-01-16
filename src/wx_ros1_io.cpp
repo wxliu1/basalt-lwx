@@ -325,9 +325,13 @@ void CRos1IO::StereoCb(const sm::ImageConstPtr& image0_ptr,
   // cv::waitKey(0);
   // return ;
 #else
+  cv::Mat image0, image1;
   if (yaml_.photometric_calibration) {
-    auto image0 = cb::toCvCopy(image0_ptr)->image;
-    auto image1 = cb::toCvCopy(image1_ptr)->image;
+    // auto image0 = cb::toCvCopy(image0_ptr)->image;
+    // auto image1 = cb::toCvCopy(image1_ptr)->image;
+
+    image0 = cb::toCvCopy(image0_ptr)->image;
+    image1 = cb::toCvCopy(image1_ptr)->image;
 
     if (image0.type() == CV_8UC3) {
       cv::cvtColor(image0, image0, cv::COLOR_BGR2GRAY);
@@ -348,6 +352,10 @@ void CRos1IO::StereoCb(const sm::ImageConstPtr& image0_ptr,
     }
 
     img_undistorter->undist(image0, image1);
+
+    // cv::imshow("undistorted image", image0);
+    // cv::waitKey(1);
+    // return ;
 
     data_in0 = image0.ptr();
     data_in1 = image1.ptr();

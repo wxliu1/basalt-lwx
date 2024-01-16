@@ -77,6 +77,9 @@ void TYamlIO::ReadConfiguration()
     config["output_log"] = output_log;
     config["photometric_calibration"] = photometric_calibration;
 
+    config["image_width"] = image_width;
+    config["image_height"] = image_height;
+
     config["camera1"]["gamma"] = gamma1;
     config["camera1"]["vignette"] = vignette1;
 
@@ -192,6 +195,12 @@ void TYamlIO::ReadConfiguration()
 
     if(config["photometric_calibration"].Type() == YAML::NodeType::Scalar)
     photometric_calibration = config["photometric_calibration"].as<bool>();
+
+    if(config["image_width"].Type() == YAML::NodeType::Scalar)
+    image_width = config["image_width"].as<int>();
+
+    if(config["image_height"].Type() == YAML::NodeType::Scalar)
+    image_height = config["image_height"].as<int>();
 
     // read photometric calibration file path.
     if(config["camera1"]["gamma"].Type() == YAML::NodeType::Scalar)
