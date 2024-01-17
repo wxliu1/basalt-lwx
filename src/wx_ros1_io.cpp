@@ -75,7 +75,8 @@ CRos1IO::CRos1IO(const ros::NodeHandle& pnh, const TYamlIO& yaml) noexcept
             << "gamma1 = " << yaml_.gamma1 << std::endl
             << "vignette1 = " << yaml_.vignette1 << std::endl
             << "gamma2 = " << yaml_.gamma2 << std::endl
-            << "vignette2 = " << yaml_.vignette2 << std::endl;
+            << "vignette2 = " << yaml_.vignette2 << std::endl
+            << "computing_mode = " << yaml_.computing_mode << std::endl;
 
   int cnt = yaml_.vec_tracked_points.size();
   std::string strConfidenceInterval = "tracked_points:[";
@@ -1039,8 +1040,20 @@ void CRos1IO::PublishMyOdom(basalt::PoseVelBiasState<double>::Ptr data,
     // << publish_velocity << std::endl;
 
 #elif defined _MULTI_VELOCITY_FILTER_
-    // double publish_velocity = curr_velocity;
-    double publish_velocity = pow(curr_velocity, yaml_.coefficient);
+    double publish_velocity = curr_velocity;
+    // double publish_velocity = pow(curr_velocity, yaml_.coefficient);
+    switch(yaml_.computing_mode)
+    {
+    case 1:
+      publish_velocity = pow(curr_velocity, yaml_.coefficient);
+      break ;
+    case 2:
+      publish_velocity = curr_velocity * yaml_.coefficient;
+      break ;
+    default:
+      // publish_velocity = curr_velocity;
+      break ;
+    }
 #else
 
 #ifdef _VELOCITY_FILTER_

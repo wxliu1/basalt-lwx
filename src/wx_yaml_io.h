@@ -75,6 +75,8 @@ struct TYamlIO
     int image_width { 640 };
     int image_height { 528 };
 
+    int computing_mode { 1 };
+
     void ReadConfiguration();
 #ifdef _NEED_WRITE_YAML    
     void WriteConfiguration();

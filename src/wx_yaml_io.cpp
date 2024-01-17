@@ -86,6 +86,8 @@ void TYamlIO::ReadConfiguration()
     config["camera2"]["gamma"] = gamma2;
     config["camera2"]["vignette"] = vignette2;
 
+    config["computing_mode"] = computing_mode;
+
 /*
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
                               0.0, 1.0, 0.0, 0.0,
@@ -214,6 +216,9 @@ void TYamlIO::ReadConfiguration()
 
     if(config["camera2"]["vignette"].Type() == YAML::NodeType::Scalar)
     vignette2 = config["camera2"]["vignette"].as<std::string>();
+
+    if(config["computing_mode"].Type() == YAML::NodeType::Scalar)
+    computing_mode = config["computing_mode"].as<int>();
 
     // read imu_cam extrinsic
     std::vector<double> vector_T{1.0, 0.0, 0.0, 0.0,
