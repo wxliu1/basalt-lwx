@@ -203,6 +203,7 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
   virtual inline void performQR() override {
     BASALT_ASSERT(state == State::Linearized);
 
+    // 因为我们使用稠密矩阵，基于Householder变换的QR分解（“通过Householder变换实现QR分解”或者说“利用Householder变换进行QR分解”）可能更好
     // Since we use dense matrices Householder QR might be better:
     // https://mathoverflow.net/questions/227543/why-householder-reflection-is-better-than-givens-rotation-in-dense-linear-algebr
 

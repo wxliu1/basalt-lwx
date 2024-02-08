@@ -213,8 +213,8 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
  private:
-  using BundleAdjustmentBase<Scalar>::frame_poses;
-  using BundleAdjustmentBase<Scalar>::frame_states;
+  using BundleAdjustmentBase<Scalar>::frame_poses; // 定义于ba_base.h文件中，纯vo模式下，用于存放每一帧(kfs & non kfs)的时间戳和位姿
+  using BundleAdjustmentBase<Scalar>::frame_states; // 定义于ba_base.h文件中，纯vo模式下,并没有用到
   using BundleAdjustmentBase<Scalar>::lmdb;
   using BundleAdjustmentBase<Scalar>::obs_std_dev;
   using BundleAdjustmentBase<Scalar>::huber_thresh;

@@ -61,3 +61,32 @@ class LinearizationBase {
 bool isLinearizationSqrt(const LinearizationType& type);
 
 }  // namespace basalt
+
+/*
+ *
+ * std::numeric_limits<int64_t>::max()
+ * usage:
+
+#include <iostream>
+#include <limits>
+
+using namespace std;
+void limits(){
+  cout<<std::numeric_limits<int32_t>::max()<<endl;
+  cout<<std::numeric_limits<int64_t>::max()<<endl;
+  cout<<std::numeric_limits<double>::max()<<endl;
+}
+int main()
+{
+    limits();
+    return 0;
+}
+
+输出：
+
+2147483647 // 2^31 - 1 即有符号32位整型表示的最大值。
+9223372036854775807
+1.79769e+308
+*/
+
+

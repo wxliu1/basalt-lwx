@@ -185,11 +185,12 @@ template <typename Scalar, int POSE_SIZE>
 Scalar LinearizationAbsQR<Scalar, POSE_SIZE>::linearizeProblem(
     bool* numerically_valid) {
   // reset damping and scaling (might be set from previous iteration)
+  // 重置阻尼和缩放（可以从上一次迭代中设置） 
   pose_damping_diagonal = 0;
   pose_damping_diagonal_sqrt = 0;
   marg_scaling = VecX();
 
-  // Linearize relative poses
+  // Linearize relative poses 线性化相关位姿
   for (const auto& [tcid_h, target_map] : lmdb_.getObservations()) {
     // if (used_frames && used_frames->count(tcid_h.frame_id) == 0) continue;
 
@@ -227,7 +228,7 @@ Scalar LinearizationAbsQR<Scalar, POSE_SIZE>::linearizeProblem(
     }
   }
 
-  // Linearize landmarks
+  // Linearize landmarks 线性化路标点
   size_t num_landmarks = landmark_blocks.size();
 
   auto body = [&](const tbb::blocked_range<size_t>& range,

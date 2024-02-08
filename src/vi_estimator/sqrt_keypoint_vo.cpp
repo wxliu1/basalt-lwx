@@ -476,11 +476,13 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   // patch matching.
   // TODO: 此外，初始的仅姿态定位可能允许我们投影未被跟踪的路标，并通过光流或特征补丁匹配重新发现它们。
 
+  // 翻译过来，大概意思指：所有帧都可以做姿态优化，而只有关键帧才进滑窗。
+
   if (add_pose) {
     // The state for the first frame is added by the initialization code, but
     // otherwise we insert a new pose state here. So add_pose is only false
     // right after initialization.
-    // 第一帧的状态是由初始化代码添加的，否则我们将在这里插入一个新的姿态状态。所以add_pose只是在初始化之后才是假的。（即add_pose后面都为true.）
+    // 第一帧的状态是由初始化代码添加的，否则我们将在这里插入一个新的姿态状态。所以add_pose只是在初始化之后才是假的。（即后面add_pose都为true.）
 
     const PoseStateWithLin<Scalar>& curr_state =
         frame_poses.at(last_state_t_ns);
@@ -498,6 +500,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   BASALT_ASSERT(!frame_poses.empty());
   // 由于frame_poses是保存帧的时间戳、位姿的map, 当程序未重启而连续第二次播放数据集时，
   // 以时间戳为key存放对应位姿的元素，就不一定是map容器类型frame_poses的最后一个元素了。
+  // 原因在于，帧的时间戳已经存在于map了，因此frame_poses[last_state_t_ns] = next_state;只是修改value,并没有增加新的键值对。
   BASALT_ASSERT(last_state_t_ns == frame_poses.rbegin()->first); // tmp comment on 2023-12-18.
 
   // save results
@@ -1475,6 +1478,8 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
   aom.total_size = marg_data.order.total_size; // 在initialize函数中total_size = POSE_SIZE = 6.
   aom.items = marg_data.order.items; // 在initialize函数中items = 1.
 
+  // frame_poses的每一个元素: key is a timestamp & value is a struct type of PoseStateWithLin including T_w_i_current
+  // 该for loop，统计pose的总个数和维数
   for (const auto& kv : frame_poses) {
     if (aom.abs_order_map.count(kv.first) == 0) {
       aom.abs_order_map[kv.first] = std::make_pair(aom.total_size, POSE_SIZE);
@@ -1490,7 +1495,13 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
   // - different initial lambda (based on previous iteration)
   // - no landmark damping
   // - outlier removal after 4 iterations?
-  //? 上面提到的SC是schur complement
+  
+  // 检查为什么我们用旧的sc循环得到更好的准确性。可能的引起问题的原因['kʌlprɪts] ：
+  // 1、不同的初始的λ（基于上一次迭代）
+  // 2、没有路标阻尼
+  // 3、在4次迭代后去除离群值吗？ 
+  // ? 上面提到的SC是schur complement
+
   lambda = Scalar(config.vio_lm_lambda_initial); // 1e-4
 
   // record stats 记录状态
@@ -1501,19 +1512,20 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
   // setup landmark blocks 设置路标块
   typename LinearizationBase<Scalar, POSE_SIZE>::Options lqr_options;
   lqr_options.lb_options.huber_parameter = huber_thresh; // 1.0
-  lqr_options.lb_options.obs_std_dev = obs_std_dev; // 0.5
+  lqr_options.lb_options.obs_std_dev = obs_std_dev; // 0.5 // standard deviation 观测标准差，方差的正的平方根
   lqr_options.linearization_type = config.vio_linearization_type; // ABS_QR
   std::unique_ptr<LinearizationBase<Scalar, POSE_SIZE>> lqr;
 
   {
     Timer t;
-    // 创建线性化对象
+    // 创建线性化对象, 如果线性化类型为ABS_QR, 则调用LinearizationAbsQR的构造函数来构造lqr.
     lqr = LinearizationBase<Scalar, POSE_SIZE>::create(this, aom, lqr_options,
                                                        &marg_data);
     stats.add("allocateLMB", t.reset()).format("ms");
     lqr->log_problem_stats(stats);
   }
 
+  // 开始循环迭代直至收敛，或者迭代次数耗尽
   bool terminated = false;
   bool converged = false;
   std::string message;
@@ -1529,9 +1541,11 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
     VecX Jp_column_norm2;
 
     // TODO: execution could be done staged
+    // 执行可以被分阶段完成[todo]
 
     Timer t;
 
+    // ? 线性化残差，这一部分是求jacobian矩阵，具体细节值得细看
     // linearize residuals
     bool numerically_valid;
     error_total = lqr->linearizeProblem(&numerically_valid);
@@ -1552,6 +1566,7 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
     //        stats.add("scaleJl_cols", t.reset()).format("ms");
     //      }
 
+    // ? 在适当位置边缘化点
     // marginalize points in place
     lqr->performQR();
     stats.add("performQR", t.reset()).format("ms");
@@ -1579,6 +1594,7 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
     //}
 
     // inner loop for backtracking in LM (still count as main iteration though)
+    // 在lm中回溯的内部循环（但仍然可以作为主迭代）
     for (int j = 0; it <= config.vio_max_iterations && !terminated; j++) {
       if (j > 0) {
         timer_iteration.reset();
@@ -1606,7 +1622,7 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
 
         //        // set (updated) damping for landmarks
         //        if (config.vio_lm_landmark_damping_variant == 0) {
-        //          lqr->setLandmarkDamping(lambda);
+      //          lqr->setLandmarkDamping(lambda);
         //          stats.add("setLandmarkDamping", t.reset()).format("ms");
         //        }
       }
@@ -1637,7 +1653,7 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
           H_copy.diagonal() += Hdiag_lambda;
 
           Eigen::LDLT<Eigen::Ref<MatX>> ldlt(H_copy);
-          inc = ldlt.solve(b);
+          inc = ldlt.solve(b); // ldlt分解是 下三角矩阵 * 对角矩阵 * 下三角矩阵的转置
           stats.add("solve", t.reset()).format("ms");
 
           if (!inc.array().isFinite().all()) {
