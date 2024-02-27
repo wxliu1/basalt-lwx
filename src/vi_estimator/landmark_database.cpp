@@ -122,14 +122,24 @@ LandmarkDatabase<Scalar_>::getLandmarksForHost(const TimeCamId &tcid) const {
   return res;
 }
 
+/*!
+@brief 添加观测路标：step1,给kpts的指定的kpt_id，增加新的观测; step2,给host frame标识的容器observations增加新的路标点
+@param tcid_target 由时间戳和相机id构成的变量
+@param o           由特征点id和2d坐标构成的变量
+@return void
+*/ 
 template <class Scalar_>
 void LandmarkDatabase<Scalar_>::addObservation(
     const TimeCamId &tcid_target, const KeypointObservation<Scalar> &o) {
   auto it = kpts.find(o.kpt_id);
   BASALT_ASSERT(it != kpts.end());
 
+  // step1 更新特征点map容器kpts的以特征点id为key的元素的value，value类型为Keypoint，给其增加新的观测
+  // 通俗讲，就是给一个指定路标点标识kpt_id，把当前帧的2d观测点添加进去
   it->second.obs[tcid_target] = o.pos;
 
+  // step2 给主帧id对应的value，添加以目标帧id标识的特征点id
+  // 通俗讲，就是添加主帧对应的目标帧的路标点id
   observations[it->second.host_kf_id][tcid_target].insert(it->first);
 }
 

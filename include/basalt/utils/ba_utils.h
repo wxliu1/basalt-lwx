@@ -79,6 +79,7 @@ Sophus::SE3<Scalar> computeRelPose(
   return res;
 }
 
+// 重投影残差对对特征点求导
 template <class Scalar, class CamT>
 inline bool linearizePoint(
     const Eigen::Matrix<Scalar, 2, 1>& kpt_obs, const Keypoint<Scalar>& kpt_pos,
@@ -115,8 +116,8 @@ inline bool linearizePoint(
   }
 
   if (proj) {
-    proj->template head<2>() = res;
-    (*proj)[2] = p_t_3d[3] / p_t_3d.template head<3>().norm();
+    proj->template head<2>() = res; // 前两维是重投影残差
+    (*proj)[2] = p_t_3d[3] / p_t_3d.template head<3>().norm(); // lwx: 1 / d
   }
   res -= kpt_obs;
 

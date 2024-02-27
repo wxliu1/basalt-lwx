@@ -250,7 +250,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       // step3: 将图像的指针放入到transforms中，用于可视化
       transforms->input_images = new_img_vec;
 
-      // step4: 添加特征点
+      // step4: 添加特征点（因为是第一帧，故而直接提取新的特征点）
       addPoints();
       // step5: 使用对极几何剔除外点
       filterPoints();
@@ -310,7 +310,7 @@ class FrameToFrameOpticalFlow : public OpticalFlowBase {
       transforms->input_images = new_img_vec;
 
       // step 5: add feature 增加点
-      addPoints(); // 追踪之后，继续提取新的点
+      addPoints(); // 追踪之后，继续提取新的点（对于非第一帧而言，先是追踪特征点，然后再提取新的点）
       // step 6: 如果是双目相机，使用对极几何剔除外点
       filterPoints(); // 使用双目E剔除点
       // 追踪结束

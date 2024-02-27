@@ -94,6 +94,8 @@
         "openglsupport": "cpp",
         "specialfunctions": "cpp",
         "splines": "cpp",
-        "*.txx": "cpp"
+        "*.txx": "cpp",
+        "nnls": "cpp",
+        "jacobi": "cpp"
     }
 }

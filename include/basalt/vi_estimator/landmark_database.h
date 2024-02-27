@@ -148,10 +148,12 @@ class LandmarkDatabase { // 特征(路标)点数据库
   typename Keypoint<Scalar>::MapIter removeLandmarkObservationHelper(
       MapIter it, typename Keypoint<Scalar>::MapIter it2);
 
+  // kpts是保存同一个特征id的所有观测
   Eigen::aligned_unordered_map<KeypointId, Keypoint<Scalar>> kpts; // key是特征点id, value是特征点 
 
   std::unordered_map<TimeCamId, std::map<TimeCamId, std::set<KeypointId>>>
-      observations; // key是时间戳+相机id value是 map 这个map是 key是时间戳+相机id value是特征点id的集合
+      observations; // key是host_kf_id，由时间戳+相机id组成； value是 map， 这个map是： key是tcid_target，由时间戳+相机id组成， value是特征点id的集合
+      // 简而言之，observations是由host frame 对应的目标帧的所有特征点id
 
   static constexpr int min_num_obs = 2;
 };

@@ -141,6 +141,7 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSqrt(
                                                 idx_to_marg.size());
 
   {
+    // 将H矩阵的变量重新排序，将保留的变量放在H矩阵的前面
     auto it = idx_to_keep.begin();
     for (size_t i = 0; i < idx_to_keep.size(); i++) {
       indices[i] = *it;
@@ -149,6 +150,7 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSqrt(
   }
 
   {
+    // 遍历边缘化的变量，将要边缘化的变量放在H矩阵的后面
     auto it = idx_to_marg.begin();
     for (size_t i = 0; i < idx_to_marg.size(); i++) {
       indices[idx_to_keep.size() + i] = *it;
@@ -156,6 +158,7 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSqrt(
     }
   }
 
+  // notice: PermutationWrapper是列主导，不是行主导
   const Eigen::PermutationWrapper<Eigen::Matrix<int, Eigen::Dynamic, 1>> p(
       indices);
 
@@ -261,15 +264,17 @@ void MargHelper<Scalar_>::marginalizeHelperSqrtToSqrt(
   Eigen::Index keep_size = idx_to_keep.size();
   Eigen::Index marg_size = idx_to_marg.size();
 
-  BASALT_ASSERT(keep_size + marg_size == Q2Jp.cols());
+  BASALT_ASSERT(keep_size + marg_size == Q2Jp.cols()); // 断言pose总维数等于Q_2^T * J_p的列数
   BASALT_ASSERT(Q2Jp.rows() == Q2r.rows());
 
+  // 填充置换矩阵（它在每行和每列中只有一个1，而在其他地方则为0。每一行恰有一个 1，每一列恰有一个 1。）
+  // 这里从填充内容看，并不是真正数学意义上的置换矩阵
   // Fill permutation matrix
   Eigen::Matrix<int, Eigen::Dynamic, 1> indices(idx_to_keep.size() +
-                                                idx_to_marg.size());
+                                                idx_to_marg.size()); // 定义了一个动态行数，而只有1列的矩阵indices.
 
   {
-    auto it = idx_to_marg.begin();
+    auto it = idx_to_marg.begin(); // 前面x行填充的是Hessian中被marg的序号
     for (size_t i = 0; i < idx_to_marg.size(); i++) {
       indices[i] = *it;
       it++;
@@ -277,25 +282,33 @@ void MargHelper<Scalar_>::marginalizeHelperSqrtToSqrt(
   }
 
   {
-    auto it = idx_to_keep.begin();
+    auto it = idx_to_keep.begin(); // 后面y行填充的是Hessian中保留的序号
     for (size_t i = 0; i < idx_to_keep.size(); i++) {
       indices[idx_to_marg.size() + i] = *it;
       it++;
     }
   }
 
+  // 注意notice: Eigen::PermutationWrapper是列主导，不是行主导，该操作使 p 成为真正的置换矩阵
   // TODO: check if using TranspositionMatrix is faster
   const Eigen::PermutationWrapper<Eigen::Matrix<int, Eigen::Dynamic, 1>> p(
       indices);
 
-  Q2Jp.applyOnTheRight(p);
+  // 先看公式：A.applyOnTheRight(B);  // equivalent to A *= B
+  // A.applyOnTheLeft(B); // equivalent to A = B * A
+  // 那么这里表示Q2Jp = Q2Jp * p
+  // 要被边缘化的帧状态被排序到最左边的列中 (摘自：frame states to be marginalized are sorted into the leftmost columns)
+  Q2Jp.applyOnTheRight(p); // 这里右乘置换矩阵，表示将Q2Jp相应的列进行交换，使得被marg部分位于前面的列，保留部分位于后面的列
+                           // 左乘置换矩阵，交换矩阵的行，右乘置换矩阵，交换矩阵的列
+                           // 当一个矩阵乘上一个置换矩阵时，所得到的是原来矩阵的横行（置换矩阵在左）或纵列（置换矩阵在右）经过置换后得到的矩阵。
 
   Eigen::Index marg_rank = 0;
   Eigen::Index total_rank = 0;
 
+  // 然后连续的Householder变换得到上三角矩阵（Successive in-place Householder transformations result in upper-triangular matrix）
   {
     const Scalar rank_threshold =
-        std::sqrt(std::numeric_limits<Scalar>::epsilon());
+        std::sqrt(std::numeric_limits<Scalar>::epsilon()); // epsilon=2.22045e-16一个很小的小量
 
     const Eigen::Index rows = Q2Jp.rows();
     const Eigen::Index cols = Q2Jp.cols();
@@ -339,6 +352,7 @@ void MargHelper<Scalar_>::marginalizeHelperSqrtToSqrt(
   Eigen::Index keep_valid_rows =
       std::max(total_rank - marg_rank, Eigen::Index(1));
 
+  // 边缘化状态的列和对应的顶部行，以及底部的零行将被删除 （Columns for marginalized states and corresponding top-rows, and zero rows at the bottom are dropped）
   marg_sqrt_H = Q2Jp.block(marg_rank, marg_size, keep_valid_rows, keep_size);
   marg_sqrt_b = Q2r.segment(marg_rank, keep_valid_rows);
 

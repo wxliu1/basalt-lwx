@@ -71,7 +71,7 @@ struct OpticalFlowResult {
   // 同时每一个相机的观测用map存储
   // KeypointId特征点ID号,AffineCompact2f特征点在图像上的像素位置，Eigen存放用于描述二维上的平移和旋转
   std::vector<Eigen::aligned_map<KeypointId, Eigen::AffineCompact2f>>
-      observations; // vector的key是相机  value是map map的 key是特征点id value是特征点的平移和旋转参数
+      observations; // vector的key是相机序号  value是map map的 key是特征点id value是特征点的平移和旋转参数
 
   // key是相机 value是map map的key是特征点id value是特征点放在哪层金字塔
   std::vector<std::map<KeypointId, size_t>> pyramid_levels;

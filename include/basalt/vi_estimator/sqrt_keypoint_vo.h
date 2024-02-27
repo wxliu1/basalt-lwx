@@ -223,7 +223,7 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
  private:
   bool take_kf;              // true if next frame should become kf
   int frames_after_kf;       // number of frames since last kf
-  std::set<int64_t> kf_ids;  // sliding window frame ids
+  std::set<int64_t> kf_ids;  // sliding window frame ids // 滑窗帧ids,只有关键帧才能进滑窗
 
   // timestamp of latest state in the sliding window
   // TODO: check and document when this is equal to kf_ids.rbegin() and when
@@ -232,6 +232,7 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
 
   // Input
 
+  // 补充[2024-2-23]: prev_opt_flow_res开始也会存储非kf的帧，但是在marginalize时，会删除除当前帧之外的非关键帧
   Eigen::aligned_map<int64_t, OpticalFlowResult::Ptr> prev_opt_flow_res; // 这里面存储的应该是滑窗里面所有关键帧的光流结果
 
   std::map<int64_t, int> num_points_kf;

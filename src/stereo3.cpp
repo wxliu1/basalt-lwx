@@ -535,6 +535,83 @@ int GetModuleFileName(char *pathbuf, int buflen)
 }
 
 int main(int argc, char** argv) {
+#if 0 // test permutaion wrappper.
+  // Fill permutation matrix
+  Eigen::Matrix<int, Eigen::Dynamic, 1> indices(12); // 定义了一个动态行数，而只有1列的矩阵indices. 这里指定为12
+
+  {
+    // 前面6行填充的是Hessian中被marg的序号
+    for (size_t i = 6; i < 12; i++) {
+      indices[i-6] = i;
+
+    }
+  }
+
+  {
+    // 后面6行填充的是Hessian中保留的序号
+    for (size_t i = 0; i < 6; i++) {
+      indices[6 + i] = i;
+
+    }
+  }
+
+  const Eigen::PermutationWrapper<Eigen::Matrix<int, Eigen::Dynamic, 1>> p(
+      indices);
+
+  std::cout << indices << std::endl;
+  std::cout << p.toDenseMatrix() << std::endl;
+
+  Eigen::Matrix<int, Eigen::Dynamic, 1> x(5); //{4, 3, 1, 2, 0};
+  // x >> 4, 3, 1, 2, 0;
+  x[0] = 4;
+  x[1] = 3;
+  x[2] = 1;
+  x[3] = 2;
+  x[4] = 0;
+  std::cout << x << std::endl;
+  const Eigen::PermutationWrapper<Eigen::Matrix<int, Eigen::Dynamic, 1>> p2(x);
+  std::cout << p2.toDenseMatrix() << std::endl;
+
+  double epsilon = std::numeric_limits<double>::epsilon();
+  std::cout << "epsilon=" << epsilon << std::endl;
+/*
+ 6
+ 7
+ 8
+ 9
+10
+11
+ 0
+ 1
+ 2
+ 3
+ 4
+ 5
+0 0 0 0 0 0 1 0 0 0 0 0
+0 0 0 0 0 0 0 1 0 0 0 0
+0 0 0 0 0 0 0 0 1 0 0 0
+0 0 0 0 0 0 0 0 0 1 0 0
+0 0 0 0 0 0 0 0 0 0 1 0
+0 0 0 0 0 0 0 0 0 0 0 1
+1 0 0 0 0 0 0 0 0 0 0 0
+0 1 0 0 0 0 0 0 0 0 0 0
+0 0 1 0 0 0 0 0 0 0 0 0
+0 0 0 1 0 0 0 0 0 0 0 0
+0 0 0 0 1 0 0 0 0 0 0 0
+0 0 0 0 0 1 0 0 0 0 0 0
+4
+3
+1
+2
+0
+0 0 0 0 1
+0 0 1 0 0
+0 0 0 1 0
+0 1 0 0 0
+1 0 0 0 0
+*/
+  return 0;
+#endif
 
   if (check_pid_lock()) return -1;
 
