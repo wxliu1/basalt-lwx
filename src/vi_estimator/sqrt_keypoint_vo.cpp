@@ -1184,6 +1184,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
             aom.items++;
           }
 
+          // 如果不被观测的landmark所对应的目标帧id在aom.abs_order_map查找不到，则添加进来
           for (const auto& [target, o] : lm.obs) {
             if (aom.abs_order_map.count(target.frame_id) == 0) {
               aom.abs_order_map[target.frame_id] =
@@ -1273,12 +1274,15 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
         // 另外，marginalize时，还多了kfs_to_marg和lost_landmaks两个参数。
         // 此处构建lqr，实际调用了linearization_abs_qr.cpp文件里的LinearizationAbsQR构造函数
         // TODO: LinearizationAbsQR构造函数值得细看
+        // 再补充说一下：这里是把跟marg帧相关的target frame，以及跟lost landmark相关的host frame 和target frame,
+        // 以及 lost landmarks一起来构建marg Hessian矩阵（或者说是构建Jacobian矩阵），然后得到Q_2^T * J_p和Q_2 * r
         auto lqr = LinearizationBase<Scalar, POSE_SIZE>::create(
             this, aom, lqr_options, &marg_data, nullptr, &kfs_to_marg,
             &lost_landmaks);
-
+        
         lqr->linearizeProblem();
         lqr->performQR(); // 这里相当于进行nullspace marginalization.得到Q_2^T * J_p和Q_2 * r 
+                          // 这一步其实和optimize()里面的步骤是一样的。即使用ns，用于marginalize landmarks 
 
         // vio_sqrt_marg默认配置项为true.
         if (is_lin_sqrt && marg_data.is_sqrt) {
@@ -1397,6 +1401,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
       MatX marg_sqrt_H_new;
       VecX marg_sqrt_b_new;
 
+      // 下面这一步应该是为了marginalize the frame variables
       {
         Timer t;
         if (is_lin_sqrt && marg_data.is_sqrt) {

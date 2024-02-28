@@ -84,6 +84,14 @@ struct Keypoint {
   Scalar backup_inv_dist;
 };
 
+/*
+// 同时还存在一个特征点数据库:LandmarkDatabase，在滑动窗口中一直维护的是这个数据库的内容，这个内容主要是kpts和observations这两个成员变量
+
+// key是特征点id value是特征点 
+Eigen::aligned_unordered_map<KeypointId, Keypoint<Scalar>> kpts;
+// key是帧率id+相机id value是 map 这个map是 key是帧率+相机id value是特征点列表
+std::unordered_map<TimeCamId, std::map<TimeCamId, std::set<KeypointId>>> observations;
+*/
 template <class Scalar_>
 class LandmarkDatabase { // 特征(路标)点数据库
  public:
