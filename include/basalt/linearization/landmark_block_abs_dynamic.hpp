@@ -37,7 +37,7 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
       Keypoint<Scalar>& lm,
       const Eigen::aligned_unordered_map<std::pair<TimeCamId, TimeCamId>,
                                          RelPoseLin<Scalar>>& relative_pose_lin,
-      const Calibration<Scalar>& calib, const AbsOrderMap& aom,
+      const Calibration<Scalar>& calib, const AbsOrderMap& aom, // aom的作用是为了判断观测点是否在abs_order_map中以及确定storage矩阵的列数
       const Options& options,
       const std::map<TimeCamId, size_t>* rel_order = nullptr) override {
     // some of the logic assumes the members are at their initial values
@@ -62,15 +62,17 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
 
     // LMBs without host frame should not be created
     BASALT_ASSERT(aom.abs_order_map.count(lm.host_kf_id.frame_id) > 0);
+    // std::cout << "host kf id=" << lm.host_kf_id.frame_id << std::endl;
 
     for (const auto& [tcid_t, pos] : lm.obs) {
       size_t i = pose_lin_vec.size();
+      // std::cout << "target kf id=" << tcid_t.frame_id << std::endl;
 
       auto it = relative_pose_lin.find(std::make_pair(lm.host_kf_id, tcid_t));
       BASALT_ASSERT(it != relative_pose_lin.end());
 
-      if (aom.abs_order_map.count(tcid_t.frame_id) > 0) {
-        pose_lin_vec.push_back(&it->second);
+      if (aom.abs_order_map.count(tcid_t.frame_id) > 0) { // 判断路标点的观测帧是否在abs_order_map中
+        pose_lin_vec.push_back(&it->second); // 这里添加的是relative_pose_lin里面保存的RelPoseLin对象指针
       } else {
         // Observation droped for marginalization
         pose_lin_vec.push_back(nullptr);
@@ -82,29 +84,66 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
     }
 
     // number of pose-jacobian columns is determined by oam
-    padding_idx = aom_->total_size;
+    padding_idx = aom_->total_size; // 位姿雅可比的列数由aom决定。
 
-    num_rows = pose_lin_vec.size() * 2 + 3;  // residuals and lm damping
+    // dense storage的行数由观测点的个数来决定，即：单个路标点的观测点的个数(pose_lin_vec.size()) * 残差维数(2) + 阻尼维数(3)
+    num_rows = pose_lin_vec.size() * 2 + 3;  // residuals and lm damping 总行数的构成：残差2维 * 线性化位姿个数 + 最后3行的阻尼
 
     size_t pad = padding_idx % 4;
     if (pad != 0) {
-      padding_size = 4 - pad;
+      padding_size = 4 - pad; // 列数补齐为4的倍数，为了内存对齐
     }
 
     lm_idx = padding_idx + padding_size;
     res_idx = lm_idx + 3;
-    num_cols = res_idx + 1;
+    num_cols = res_idx + 1; // 总列数的构成：若干列的位姿雅可比 + 3列的路标雅可比 + 1列的残差
 
     // number of columns should now be multiple of 4 for good memory alignment
     // TODO: test extending this to 8 --> 32byte alignment for float?
     BASALT_ASSERT(num_cols % 4 == 0);
-
+    
+    // 摘自rootba: We store only the blocks of the pose Jacobian that correspond to the poses where the landmark was observed
+    // 存储能观测到该路标的pose Jacobian
+    // 摘自rootba: also store the landmark’s Jacobians and residuals in the same landmark block
+    // 相当于landmark block对应一个路标，它存储了路标的位姿雅可比，路标雅可比和残差。
+    // 摘自rootba:Dense storage for the outlined (red) landmark block that efficiently stores all Jacobians and residuals for a single landmark.
+    // 对于单个路标：[J_p | pad | J_l | res]: J_l是 2k_j*3的块，r是2k_j*1的块，J_p是2k_j*6的块。这里的k_j基本就是路标点所对应的target frame的个数
     storage.resize(num_rows, num_cols);
+/*
+ 鉴于BA问题的特殊矩阵结构, 本文设计了一种高效内存占用的矩阵存储模式. 我们将BA的残差矩阵按照地图点来分组, 每个地图点j
+ 被 k_j 个相机观测到, 每个 J_l 子块的大小是2x3, J_p 子块的大小是2x6. 下图(b)则表示一个地图点相关的残差项landmark block, 
+ 可以看到我们把公式(6)的矩阵实现表示成一种很内存紧凑的形式, 它包括大小为 2k_j x 6 的位姿雅可比矩阵、大小为 2k_j x 3 的地图点雅可比矩阵
+ 和大小为 2k_j x 1 的重投影误差矩阵.
+
+ Fig 2(c)表示使用in-place QR分解的边缘化操作后的landmark block, (c)下面一行残差块即为公式(17)的优化目标, (c)上面的残差块即为后带入项公式(16).
+
+ Fig 3表示如何在一个已边缘化的landmark block上添加阻尼系数: 不是直接在大的雅可比矩阵 J_l 上添加对角阵 sqrt(λ)D_l , 我们在 J_l 下方添加一个小的3x3矩阵.
+
+ 这个额外的3x3绿色矩阵可以通过6 given rotations将其消掉:
+
+ 其中 Q_λ 是6 given rotation的乘积结果. 同理, 利用 Q_λ^T 也可以把阻尼项 sqrt(λ)D_l 给复原到原来位置.
+
+ 使用共轭梯度线性求解器.
+ 系统可以对每个地图点的landmark block独立的处理线性化、边缘化、两步求解工作, 所以可以直接并行化计算.
+ 
+*/
+/*
+ * 2024-3-8补充说明：
+ * 实际一个landmark的landmark block在位姿雅可比排列和布局上并不是像在rootba论文中Figure 2(b)那样的简单结构，
+ * 在同一个二维行上面其实是可以有多个2x6的pose Jacobians, 即pose jacobians不会恰好是全部在对角线上
+ * 
+ * 2024-3-11补充说明:
+ * 每一次optimize或者marg时,所有landmark block的storage矩阵的列数是一样的，而行数由每个landmark block的观测点个数决定
+ */
+
 
     damping_rotations.clear();
     damping_rotations.reserve(6);
 
     state = State::Allocated;
+
+    //std::cout << "lm_id:" << ;
+    // std::cout << "obs.size:" << lm.obs.size() << " aom_->total_size:" << aom_->total_size << " num_rows:" << num_rows << " num_cols:" << num_cols << std::endl;
   }
 
   // may set state to NumericalFailure --> linearization at this state is
@@ -117,16 +156,16 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
                   state == State::Linearized || state == State::Marginalized);
 
     // storage.setZero(num_rows, num_cols);
-    storage.setZero();
+    storage.setZero(); // 存储矩阵设置为0矩阵
     damping_rotations.clear();
-    damping_rotations.reserve(6);
+    damping_rotations.reserve(6); // 为了应用six Givens rotations.
 
     bool numerically_valid = true;
 
     Scalar error_sum = 0;
-
+    std::cout << "observation number:" << lm_ptr->obs.size() << std::endl;
     size_t i = 0;
-    for (const auto& [tcid_t, obs] : lm_ptr->obs) {
+    for (const auto& [tcid_t, obs] : lm_ptr->obs) { // 遍历一个路标的所有观测
       std::visit(
           [&, obs = obs](const auto& cam) {
             // TODO: The pose_lin_vec[i] == nullptr is intended to deal with
@@ -141,54 +180,69 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
             // (pose_lin_vec[i])` check or `pose_lin_vec[i] != nullptr` assert
             // in this class.
 
-            if (pose_lin_vec[i]) {
-              size_t obs_idx = i * 2;
+            if (pose_lin_vec[i]) { // 线性化相对位姿时，pose_lin_vec[i]所指向的RelPoseLin对象的成员已经被赋过值了。
+              size_t obs_idx = i * 2; // 一个观测对应2维的重投影残差，所以乘以2
+              // pose_tcid_vec[i]保存的是以host frame和target frame的id组成的pair
+              // 而pose_lin_vec[i]保存的是RelPoseLin对象指针
+              // 它们是从relative_pose_lin中查找指定landmark的观测得到的key和value，然后赋值得到的.
               size_t abs_h_idx =
                   aom_->abs_order_map.at(pose_tcid_vec[i]->first.frame_id)
-                      .first;
+                      .first; // 主导帧在storage矩阵中的列的序号
               size_t abs_t_idx =
                   aom_->abs_order_map.at(pose_tcid_vec[i]->second.frame_id)
-                      .first;
+                      .first; // 目标帧在storage矩阵中的列的序号
 
+              std::cout << "abs_h_idx=" << abs_h_idx << " abs_t_idx=" << abs_t_idx << std::endl;
               Vec2 res;
               Eigen::Matrix<Scalar, 2, POSE_SIZE> d_res_d_xi;
-              Eigen::Matrix<Scalar, 2, 3> d_res_d_p;
+              Eigen::Matrix<Scalar, 2, 3> d_res_d_p; // 残差对3d点的求导
 
-              using CamT = std::decay_t<decltype(cam)>;
+              using CamT = std::decay_t<decltype(cam)>; // cam是具体的某一种相机模型对象
+              // 使用相对姿态 T_t_h_sophus 来计算相对姿态的导数 d_res_d_xi， d_res_d_p
               bool valid = linearizePoint<Scalar, CamT>(
                   obs, *lm_ptr, pose_lin_vec[i]->T_t_h, cam, res, &d_res_d_xi,
-                  &d_res_d_p);
+                  &d_res_d_p); // obs是2x1的位置
 
-              if (!options_->use_valid_projections_only || valid) {
+              // use_valid_projections_only在landmakr_block.hpp中定义，默认为true.
+              if (!options_->use_valid_projections_only || valid) { // 因此只有valid为true,才能进来
                 numerically_valid = numerically_valid &&
                                     d_res_d_xi.array().isFinite().all() &&
                                     d_res_d_p.array().isFinite().all();
 
-                const Scalar res_squared = res.squaredNorm();
+                const Scalar res_squared = res.squaredNorm(); // 2范数的平方
                 const auto [weighted_error, weight] =
                     compute_error_weight(res_squared);
                 const Scalar sqrt_weight =
                     std::sqrt(weight) / options_->obs_std_dev;
 
+                // 统计一个路标的所有观测的加权重投影残差之和
                 error_sum += weighted_error /
-                             (options_->obs_std_dev * options_->obs_std_dev);
+                             (options_->obs_std_dev * options_->obs_std_dev); // 加权的残差除以标准差（standard deviation）的平方
 
+                // 索引obs_idx, lm_idx, abs_h_idx, abs_t_idx：
+                // obs_idx是行序号: 0, 2, 4, ...
+                // lm_idx是storage中路标jacobian的起始列序号
+                // res_idx是storage中残差的起始列序号
+                // abs_h_idx是主导帧在storage矩阵中的列的序号
+                // abs_t_idx是目标帧在storage矩阵中的列的序号
+                // abs_h_idx 和 abs_t_idx 均是aom.abs_order_map中每个6维的位姿帧按滑窗顺序进行排列的所在帧的维数序号
                 storage.template block<2, 3>(obs_idx, lm_idx) =
                     sqrt_weight * d_res_d_p;
                 storage.template block<2, 1>(obs_idx, res_idx) =
                     sqrt_weight * res;
 
                 d_res_d_xi *= sqrt_weight;
+                // 链式求导得到绝对位姿雅可比
                 storage.template block<2, 6>(obs_idx, abs_h_idx) +=
-                    d_res_d_xi * pose_lin_vec[i]->d_rel_d_h;
+                    d_res_d_xi * pose_lin_vec[i]->d_rel_d_h; // host frame的绝对位姿雅可比
                 storage.template block<2, 6>(obs_idx, abs_t_idx) +=
-                    d_res_d_xi * pose_lin_vec[i]->d_rel_d_t;
+                    d_res_d_xi * pose_lin_vec[i]->d_rel_d_t; // target frame的绝对位姿雅可比
               }
             }
 
             i++;
           },
-          calib_->intrinsics[tcid_t.cam_id].variant);
+          calib_->intrinsics[tcid_t.cam_id].variant); // variant是用泛型变量表示的相机模型对象
     }
 
     if (numerically_valid) {
@@ -207,8 +261,8 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
     // Since we use dense matrices Householder QR might be better:
     // https://mathoverflow.net/questions/227543/why-householder-reflection-is-better-than-givens-rotation-in-dense-linear-algebr
 
-    if (options_->use_householder) {
-      performQRHouseholder();
+    if (options_->use_householder) { // use_householder默认为true.
+      performQRHouseholder(); // 就地边缘化in-place marginalization
     } else {
       performQRGivens();
     }
@@ -266,14 +320,20 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
     BASALT_ASSERT(state == State::Marginalized);
 
     // For now we include all columns in LMB
+    // padding_idx是位姿的总维数
     BASALT_ASSERT(pose_inc.size() == signed_cast(padding_idx));
 
     const auto Q1Jl = storage.template block<3, 3>(0, lm_idx)
-                          .template triangularView<Eigen::Upper>();
+                          .template triangularView<Eigen::Upper>(); // lwx: R_1
 
-    const auto Q1Jr = storage.col(res_idx).template head<3>();
-    const auto Q1Jp = storage.topLeftCorner(3, padding_idx);
+    const auto Q1Jr = storage.col(res_idx).template head<3>(); //lwx: Q_1^T r
+    const auto Q1Jp = storage.topLeftCorner(3, padding_idx);//lwx: Q_1^T J_p
 
+    // 根据Eigen 官方文档：
+    // https://eigen.tuxfamily.org/dox/classEigen_1_1TriangularViewImpl_3_01MatrixType___00_01Mode___00_01Dense_01_4.html#ad0a79e600f86cad0d266d712fcec80b7
+    // 示例m.triangularView<Eigen::Upper>().solve(n)等价于m.inverse()*n
+    // 因此这儿路标增量等价于inc=-Q1Jl^{-1} * (Q1Jr + Q1Jp * pose_inc)
+    // 即$inc=-R_1^{-1}(Q_1^T r + Q_1^T J_p {\Delta}x_p^*)$ 详见rootba (16).
     Vec3 inc = -Q1Jl.solve(Q1Jr + Q1Jp * pose_inc);
 
     // We want to compute the model cost change. The model function is
@@ -289,7 +349,7 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
     //
     // Here we have J = [Jp, Jl] under the orthogonal projection Q = [Q1, Q2],
     // i.e. the linearized system (model cost) is
-    //
+    //00
     //    L(inc) = 0.5 || J inc + r ||^2 = 0.5 || Q^T J inc + Q^T r ||^2
     //
     // and below we thus compute
@@ -309,16 +369,18 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
     //                | Q2^T Jp incp                |
     //
 
-    // undo damping before we compute the model cost difference
-    setLandmarkDamping(0);
+    // undo damping before we compute the model cost difference 在我们计算模型代价差之前取消阻尼
+    setLandmarkDamping(0); // 搜了setLandmarkDamping，发现并未用到路标阻尼
 
-    // compute "Q^T J incp"
+    // compute "Q^T J incp" 计算 Q^T J_p {\Delta}x_p^*
     VecX QJinc = storage.topLeftCorner(num_rows - 3, padding_idx) * pose_inc;
 
     // add "Q1^T Jl incl" to the first 3 rows
-    QJinc.template head<3>() += Q1Jl * inc;
+    QJinc.template head<3>() += Q1Jl * inc; // 增加R_1 {\Delta}x_l^*
 
-    auto Qr = storage.col(res_idx).head(num_rows - 3);
+    auto Qr = storage.col(res_idx).head(num_rows - 3); //取出Q^T r
+    // 计算公式：l_diff = - (J inc)^T (r + 0.5 (J inc)).
+    // 计算公式：l_diff = - (Q^T J inc)^T (Q^T r + 0.5 (Q^T J inc)).
     l_diff -= QJinc.transpose() * (Scalar(0.5) * QJinc + Qr);
 
     // TODO: detect and handle case like ceres, allowing a few iterations but
@@ -333,8 +395,10 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
     // Note: scale only after computing model cost change
     inc.array() *= Jl_col_scale.array();
 
+    // 更新路标增量：更新投影方向和逆深度
     lm_ptr->direction += inc.template head<2>();
     lm_ptr->inv_dist = std::max(Scalar(0), lm_ptr->inv_dist + inc[2]);
+
     return true; // added by wxliu on 2023-12-19
   }
 
@@ -451,7 +515,7 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
     Eigen::JacobiRotation<Scalar> gr;
     for (size_t n = 0; n < 3; n++) {
       for (size_t m = num_rows - 4; m > n; m--) {
-        gr.makeGivens(storage(m - 1, lm_idx + n), storage(m, lm_idx + n));
+        gr.makeGivens(storage(m - 1, lm_idx + n), storage(m, lm_idx + n)); // lm_idx是storage中路标jacobian的起始列序号
         storage.applyOnTheLeft(m, m - 1, gr);
       }
     }
@@ -496,13 +560,22 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
 
   void get_dense_Q2Jp_Q2r(MatX& Q2Jp, VecX& Q2r,
                           size_t start_idx) const override {
+    // 从storage中取出从res_idx（残差的起始列序号）列开始的末尾(num_rows - 3)行，
+    // 也即storage最后一列的末尾(num_rows - 3)行，
+    // 赋值到Q2r中从start_idx开始的(num_rows - 3)个元素上
     Q2r.segment(start_idx, num_rows - 3) =
-        storage.col(res_idx).tail(num_rows - 3);
+        storage.col(res_idx).tail(num_rows - 3); //- 从storage中取出Q_2^T x r
 
+    // padding_idx是位姿雅可比的总列数，即位姿的总维数。
     BASALT_ASSERT(Q2Jp.cols() == signed_cast(padding_idx));
 
+    // 从storage中第3行第0列开始的(num_rows - 3)行和padding_idx列个元素，赋值到
+    // Q2Jp的第start_idx开始，第0列的(num_rows - 3)行和padding_idx列个元素上。
+    // 简单说：把storage中索引index(3, 0)开始的块block(num_rows - 3, padding_idx)上的元素赋值到
+    // Q2Jp中索引(start_idx, 0)开始的块(num_rows - 3, padding_idx)上。
     Q2Jp.block(start_idx, 0, num_rows - 3, padding_idx) =
-        storage.block(3, 0, num_rows - 3, padding_idx);
+        storage.block(3, 0, num_rows - 3, padding_idx); //- 从storage中取出Q_2^T x J_p
+
   }
 
   void get_dense_Q2Jp_Q2r_rel(
@@ -521,10 +594,14 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
   }
 
   void add_dense_H_b(MatX& H, VecX& b) const override {
+    // 从storage矩阵取出landmark block的Q_2^T x r
     const auto r = storage.col(res_idx).tail(num_rows - 3);
+    // 从storage矩阵取出landmark block的Q_2^T x J_p
     const auto J = storage.block(3, 0, num_rows - 3, padding_idx);
 
+    // 则H的上波浪等于\widetilde{H} = J^T x J = (Q_2^T x J_p)^T x Q_2^T x J_p = J_p^T x Q_2 x Q_2^T x J_p
     H.noalias() += J.transpose() * J;
+    // b的上波浪等于\widetilde{b} = J^T x r = (Q_2^T x J_p)^T x r = J_p^T x Q_2 x Q_2^T x r
     b.noalias() += J.transpose() * r;
   }
 

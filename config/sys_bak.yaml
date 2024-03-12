@@ -1,11 +1,11 @@
 show_gui: false
 print_queue: false
-cam_calib_path: /root/lwx_dataset/config/44_calib_vo.json
+cam_calib_path: /root/lwx_dataset/config/173_calib_vo.json
 # cam_calib_path: /root/stereo3_ws/install/share/stereo3/config/173_calib_vo.json
 # cam_calib_path: /root/dev/stereo3_ros1_ws/install/share/stereo3/config/173_calib_vo.json
 dataset_path: ""
 dataset_type: ""
-config_path: /root/lwx_dataset/config/44_vio_config.json
+config_path: /root/lwx_dataset/config/173_vio_config.json
 # config_path: /root/stereo3_ws/install/share/stereo3/config/vio_config.json
 # config_path: /root/dev/stereo3_ros1_ws/install/share/stereo3/config/vio_config.json
 result_path: ""
@@ -21,7 +21,7 @@ slow_velocity: 2 # 0.01 #3
 zero_velocity: 0.061
 mean_value: 68.1
 
-tks_pro_integration: false
+tks_pro_integration: true
 src_ip_address: 192.168.55.28
 dest_ip_adderss: 192.168.55.21
 debug_mode: false

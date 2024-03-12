@@ -73,33 +73,35 @@ LinearizationAbsQR<Scalar, POSE_SIZE>::LinearizationAbsQR(
   BASALT_ASSERT_STREAM(options.lb_options.obs_std_dev == estimator->obs_std_dev,
                        "obs_std_dev should be set to the same value");
 
-  // Allocate memory for relative pose linearization
+  // Allocate memory for relative pose linearization 为相对位姿线性化分配内存
   for (const auto& [tcid_h, target_map] : lmdb_.getObservations()) {
     // if (used_frames && used_frames->count(tcid_h.frame_id) == 0) continue;
     const size_t host_idx = host_to_idx_.size();
     host_to_idx_.try_emplace(tcid_h, host_idx);
-    host_to_landmark_block.try_emplace(tcid_h);
+    host_to_landmark_block.try_emplace(tcid_h); // 这里只添加以tcid_h为key的元素部分
 
     // assumption: every host frame has at least target frame with
     // observations
     // NOTE: in case a host frame loses all of its landmarks due
     // to outlier removal or marginalization of other frames, it becomes quite
     // useless and is expected to be removed before optimization.
+    // 假定: 每个主机帧都至少有带有观测结果的目标帧
+    // 注意: 万一由于删除outlier或者其它帧们的边缘化，一个主导帧失去了它所有的路标点，那么它变得毫无用处，并期望在优化前被删除
     BASALT_ASSERT(!target_map.empty());
 
     for (const auto& [tcid_t, obs] : target_map) {
-      // assumption: every target frame has at least one observation
+      // assumption: every target frame has at least one observation 假设：每个 target frame 至少有一个观测
       BASALT_ASSERT(!obs.empty());
 
       std::pair<TimeCamId, TimeCamId> key(tcid_h, tcid_t);
-      relative_pose_lin.emplace(key, RelPoseLin<Scalar>());
+      relative_pose_lin.emplace(key, RelPoseLin<Scalar>()); // 以host frame和target frame的id组成的pair作为key
     }
   }
 
-  // Populate lookup for relative poses grouped by host-frame
+  // Populate lookup for relative poses grouped by host-frame 填充按主机帧分组的相对姿态的查找 
   for (const auto& [tcid_h, target_map] : lmdb_.getObservations()) {
     // if (used_frames && used_frames->count(tcid_h.frame_id) == 0) continue;
-    relative_pose_per_host.emplace_back();
+    relative_pose_per_host.emplace_back(); // emplace_back()未带参数，在vector末尾添加一个按默认值构造的元素。
 
     for (const auto& [tcid_t, _] : target_map) {
       std::pair<TimeCamId, TimeCamId> key(tcid_h, tcid_t);
@@ -111,7 +113,7 @@ LinearizationAbsQR<Scalar, POSE_SIZE>::LinearizationAbsQR(
     }
   }
 
-  num_cameras = frame_poses.size();
+  num_cameras = frame_poses.size(); // 相机帧数
 
   landmark_ids.clear();
   for (const auto& [k, v] : lmdb_.getLandmarks()) {
@@ -119,17 +121,17 @@ LinearizationAbsQR<Scalar, POSE_SIZE>::LinearizationAbsQR(
       if (used_frames && used_frames->count(v.host_kf_id.frame_id)) {
         landmark_ids.emplace_back(k);
       } else if (lost_landmarks && lost_landmarks->count(k)) {
-        landmark_ids.emplace_back(k);
+        landmark_ids.emplace_back(k); // marginalize()时，执行该行，添加需要被marg的landmark id
       }
     } else {
-      landmark_ids.emplace_back(k);
+      landmark_ids.emplace_back(k); // opitimize()时，执行该行，添加需要被optimize的landmark id
     }
   }
   size_t num_landmakrs = landmark_ids.size();
 
   // std::cout << "num_landmakrs " << num_landmakrs << std::endl;
 
-  landmark_blocks.resize(num_landmakrs);
+  landmark_blocks.resize(num_landmakrs); // 路标块的size是按照优化或者边缘化的路标点个数来确定的
 
   {
     auto body = [&](const tbb::blocked_range<size_t>& range) {
@@ -146,8 +148,47 @@ LinearizationAbsQR<Scalar, POSE_SIZE>::LinearizationAbsQR(
     };
 
     tbb::blocked_range<size_t> range(0, num_landmakrs);
-    tbb::parallel_for(range, body);
+    tbb::parallel_for(range, body); // 并行分配路标块
   }
+#if 0
+  // print logs. 2024-3-4
+  std::string str;
+  if(lost_landmarks)
+  {
+    str = "marg";
+  }
+  else
+  {
+    str = "opt";
+  }
+  std::cout << "o_or_m=" << str << " num_landmakrs=" << num_landmakrs << " aom.total_size=" << aom.total_size << std::endl;
+  for(int i = 0; i < num_landmakrs; i++)
+  {
+    KeypointId lm_id = landmark_ids[i];
+    auto& landmark = lmdb_.getLandmark(lm_id);
+
+    std::cout << "host kf id=" << landmark.host_kf_id.frame_id << " lm_id=" << lm_id << " obs.size:" << landmark.obs.size() << std::endl;
+
+    int j = 0;
+    int k = 0;
+    for (const auto& [tcid_t, pos] : landmark.obs) 
+    {
+      std::cout << "target kf id=" << tcid_t.frame_id << std::endl;
+
+      if (aom.abs_order_map.count(tcid_t.frame_id) > 0) {
+        j++;
+      } else {
+        // Observation droped for marginalization
+        k++;
+      }
+    }
+
+    std::cout << "j = " << j << " k = " << k << std::endl;
+
+    break ;
+  }
+  // the end.
+#endif
 
   landmark_block_idx.reserve(num_landmakrs);
 
@@ -155,9 +196,14 @@ LinearizationAbsQR<Scalar, POSE_SIZE>::LinearizationAbsQR(
   for (size_t i = 0; i < num_landmakrs; i++) {
     landmark_block_idx.emplace_back(num_rows_Q2r);
     const auto& lb = landmark_blocks[i];
+    // lb->numQ2rows()返回的是：单个路标点的观测点的个数(pose_lin_vec.size()) * 残差维数(2) // 统计每个路标用于存储路标雅可比的矩阵的行数
+    //- 20240311正解：lb->numQ2rows()返回的是如root ba论文中的Figure 3(a)所示的Q_2^T x J_p加最后3行空白部分，
+    //- 即图3(a)中除去Q_1^T x J_p所占的3行，剩余的部分，由于landmark block的storage矩阵的最后3行是空白的，所以返回的
+    //- 实际行数包含了Q_2^T x J_p的行数加上最后空白的3行
+    //- 简而言之：num_rows_Q2r保存的是所有landmarks的Q_2^T x r行数之和，而landmark_block_idx保存的是每一个landmark在大的Q2r和大的Q2Jp中的序号
     num_rows_Q2r += lb->numQ2rows();
 
-    host_to_landmark_block.at(lb->getHostKf()).emplace_back(lb.get());
+    host_to_landmark_block.at(lb->getHostKf()).emplace_back(lb.get()); // 存储以host_kf_id为key的landmark_block普通指针
   }
 
   if (imu_lin_data) {
@@ -190,21 +236,41 @@ Scalar LinearizationAbsQR<Scalar, POSE_SIZE>::linearizeProblem(
   pose_damping_diagonal_sqrt = 0;
   marg_scaling = VecX();
 
-  // Linearize relative poses 线性化相关位姿
+  // 不管是optimize还是marginalize，都会先对所有的观测关联的host frame 和 target frame进行相对位姿线性化
+  //? TODO:疑问: marg时，还需要把所有的观测对应的相对位姿全部线性化一遍吗?只线性化marg frame和lost landmarks关联的host frame和target frame不就可以么?
+  // Linearize relative poses 线性化相对位姿
   for (const auto& [tcid_h, target_map] : lmdb_.getObservations()) {
     // if (used_frames && used_frames->count(tcid_h.frame_id) == 0) continue;
 
     for (const auto& [tcid_t, _] : target_map) {
       std::pair<TimeCamId, TimeCamId> key(tcid_h, tcid_t);
-      RelPoseLin<Scalar>& rpl = relative_pose_lin.at(key);
+      RelPoseLin<Scalar>& rpl = relative_pose_lin.at(key); // relative_pose_lin是以host frame和target frame的id组成的pair作为key
 
       if (tcid_h != tcid_t) {
+        // 获取host frame和target frame的位姿
         const PoseStateWithLin<Scalar>& state_h =
             estimator->getPoseStateWithLin(tcid_h.frame_id);
         const PoseStateWithLin<Scalar>& state_t =
             estimator->getPoseStateWithLin(tcid_t.frame_id);
 
-        // compute relative pose & Jacobians at linearization point
+
+        /*
+         * 毅神的理解：
+         * 通常我们要固定一些Jacobian，需要固定的是整个Frame的Jacobian。
+         * 但Basalt的这段代码却只固定了相对姿态跟自身的导数，即 DT_h^t / DT_h ，和 DT_h^t / DT_t 。
+         * 而对于 Dr_{it} / DT_h^t  来说，却在随着最优化迭代的过程中保持更新，对于点云的Jacobian来说，也在保持更新。
+         * 
+         * 这一波操作，我一开始并不是特别明白。但仔细思考的时候，大致猜到了缘由：
+         * 1、作者是按照图2的方式划分子图的，并且每个子图在host frame为参考系下独立做Schur消元。
+         * 2、划分子图后，每个子图可以看成以一个host frame作为参考系下的子图。
+         * 在子图中，host frame的坐标值为这个子图的坐标原点，所有target frame的姿态数值，都是相对于该host frame的相对姿态。
+         * 因此在该相对参考系的坐标下，所有变量都不存在零空间。
+         * 也可以理解为，在子图的处理环节，host frame的坐标已经为Identity，所以不存在VIO中的不可观性。
+         * 就是因为零空间在相对坐标系下不存在，按照常规优化就好，无需FEJ操作。
+         */
+
+        // compute relative pose & Jacobians at linearization point 在线性化点处计算相对位姿和Jacobians
+        // 使用FEJ线性化点计算 d_rel_d_h， d_rel_d_t
         Sophus::SE3<Scalar> T_t_h_sophus =
             computeRelPose(state_h.getPoseLin(), calib.T_i_c[tcid_h.cam_id],
                            state_t.getPoseLin(), calib.T_i_c[tcid_t.cam_id],
@@ -213,6 +279,7 @@ Scalar LinearizationAbsQR<Scalar, POSE_SIZE>::linearizeProblem(
         // if either state is already linearized, then the current state
         // estimate is different from the linearization point, so recompute
         // the value (not Jacobian) again based on the current state.
+        // 当Pose存在线性化点的时候，使用优化迭代时候的姿态计算相对姿态 T_t_h_sophus
         if (state_h.isLinearized() || state_t.isLinearized()) {
           T_t_h_sophus =
               computeRelPose(state_h.getPose(), calib.T_i_c[tcid_h.cam_id],
@@ -228,12 +295,15 @@ Scalar LinearizationAbsQR<Scalar, POSE_SIZE>::linearizeProblem(
     }
   }
 
+  // 对于optimize，线性化lmdb里面的所有路标点，而对于marg，这里只线性化lost landmarks（未连接的路标点，即不被当前帧观测到的路标点）
   // Linearize landmarks 线性化路标点
   size_t num_landmarks = landmark_blocks.size();
 
   auto body = [&](const tbb::blocked_range<size_t>& range,
                   std::pair<Scalar, bool> error_valid) {
     for (size_t r = range.begin(); r != range.end(); ++r) {
+      // linearizeLandmark()求重投影残差，然后线性化观测点，线性化host frame和target frame的绝对位姿
+      // 进而填充该路标点的landmark_block: storage[J_p | pad | J_l | res]
       error_valid.first += landmark_blocks[r]->linearizeLandmark();
       error_valid.second =
           error_valid.second && !landmark_blocks[r]->isNumericalFailure();
@@ -241,11 +311,13 @@ Scalar LinearizationAbsQR<Scalar, POSE_SIZE>::linearizeProblem(
     return error_valid;
   };
 
+  // initial_value作为初值，第一个分量表示加权残差和，第二个分量表示线性化是否数值成功
   std::pair<Scalar, bool> initial_value = {0.0, true};
-  auto join = [](auto p1, auto p2) {
+  // join用于汇总各个线程块的结果，这里表示把所有路标的加权误差相加，线性化的数值是否有效进行逻辑与
+  auto join = [](auto p1, auto p2) { // p2为每个线程的返回值
     p1.first += p2.first;
     p1.second = p1.second && p2.second;
-    return p1;
+    return p1; // 返回总误差，以及所有点的线性化是否数值上成功
   };
 
   tbb::blocked_range<size_t> range(0, num_landmarks);
@@ -265,17 +337,18 @@ Scalar LinearizationAbsQR<Scalar, POSE_SIZE>::linearizeProblem(
     reduction_res.first += marg_prior_error;
   }
 
-  return reduction_res.first;
+  return reduction_res.first; // 返回总误差
 }
 
 template <typename Scalar, int POSE_SIZE>
 void LinearizationAbsQR<Scalar, POSE_SIZE>::performQR() {
   auto body = [&](const tbb::blocked_range<size_t>& range) {
     for (size_t r = range.begin(); r != range.end(); ++r) {
-      landmark_blocks[r]->performQR();
+      landmark_blocks[r]->performQR(); // 每个landmark block 单独执行performQR
     }
   };
-
+  // 摘自rootba论文: As Givens rotations operate on individual rows, marginalization can be performed for each landmark block separately, possibly in parallel.
+  // 意即：由于Givens rotations（实现QR分解的一种方法）在单独行上操作，可以并行地，在每个landmark block上分别地执行marg
   tbb::blocked_range<size_t> range(0, landmark_block_idx.size());
   tbb::parallel_for(range, body);
 }
@@ -493,6 +566,7 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::setLandmarkDamping(Scalar lambda) {
 template <typename Scalar, int POSE_SIZE>
 void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_Q2Jp_Q2r(
     MatX& Q2Jp, VecX& Q2r) const {
+  // num_rows_Q2r保存的是所有landmarks的Q_2^T x r行数之和，而landmark_block_idx[i]保存的是每一个landmark在大的Q2r和大的Q2Jp中的序号
   size_t total_size = num_rows_Q2r;
   size_t poses_size = aom.total_size;
 
@@ -525,6 +599,7 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_Q2Jp_Q2r(
   };
 
   // go over all host frames
+  // range的范围是0到参与优化的landmarks总个数，即: range ∈ [0, num_landmakrs)
   tbb::blocked_range<size_t> range(0, landmark_block_idx.size());
   tbb::parallel_for(range, body);
   // body(range);
@@ -538,27 +613,27 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_Q2Jp_Q2r(
   }
 
   // Add damping
-  get_dense_Q2Jp_Q2r_pose_damping(Q2Jp, damping_start_idx);
+  get_dense_Q2Jp_Q2r_pose_damping(Q2Jp, damping_start_idx); // 至少vo模式下，阻尼并没有用到
 
-  // Add marginalization
-  get_dense_Q2Jp_Q2r_marg_prior(Q2Jp, Q2r, marg_start_idx);
+  // Add marginalization 添加边缘化先验
+  get_dense_Q2Jp_Q2r_marg_prior(Q2Jp, Q2r, marg_start_idx); // marg_start_idx是先验在Q2Jp中的行的起始索引
 }
 
 template <typename Scalar, int POSE_SIZE>
 void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_H_b(MatX& H,
                                                           VecX& b) const {
-  struct Reductor {
+  struct Reductor { // 汇总所有的landmark block
     Reductor(size_t opt_size,
              const std::vector<LandmarkBlockPtr>& landmark_blocks)
         : opt_size_(opt_size), landmark_blocks_(landmark_blocks) {
-      H_.setZero(opt_size_, opt_size_);
+      H_.setZero(opt_size_, opt_size_); // 设置H和b为0矩阵
       b_.setZero(opt_size_);
     }
 
     void operator()(const tbb::blocked_range<size_t>& range) {
       for (size_t r = range.begin(); r != range.end(); ++r) {
         auto& lb = landmark_blocks_[r];
-        lb->add_dense_H_b(H_, b_);
+        lb->add_dense_H_b(H_, b_); // 初值H和b都是0矩阵
       }
     }
 
@@ -568,6 +643,9 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_H_b(MatX& H,
       b_.setZero(opt_size_);
     };
 
+    //- 汇总：令landmark block块的J=Q_2^T x J_p, r=Q_2^T x r,
+    // 则可以得到每个landmark block的H = J^T x J和b=J^T x r
+    // 最后把所有landmarks的H和b累加起来
     inline void join(Reductor& b) {
       H_ += b.H_;
       b_ += b.b_;
@@ -580,11 +658,12 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_H_b(MatX& H,
     VecX b_;
   };
 
-  size_t opt_size = aom.total_size;
+  size_t opt_size = aom.total_size; //位姿总维数
 
   Reductor r(opt_size, landmark_blocks);
 
   // go over all host frames
+  // range的范围是0到参与优化的landmarks总个数，即: range ∈ [0, num_landmakrs)
   tbb::blocked_range<size_t> range(0, landmark_block_idx.size());
   tbb::parallel_reduce(range, r);
 
@@ -594,9 +673,13 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_H_b(MatX& H,
   // Add damping
   add_dense_H_b_pose_damping(r.H_);
 
-  // Add marginalization
+  // Add marginalization 添加marg先验
+  // 分别在r.H_的左上角加上H_m^{\prime}, 在r.b_的头部加上b_m^{\prime}, 即：
+  // r.H_.topLeftCorner(marg_size, marg_size) += H_m^{\prime}
+  // r.b_.head(marg_size) += b_m^{\prime};
   add_dense_H_b_marg_prior(r.H_, r.b_);
 
+  // 把所有路标点通过Nullspace Marginalization后的H_p和b_p叠加，再叠加左上角的marg. prior之后，进行赋值返回。
   H = std::move(r.H_);
   b = std::move(r.b_);
 }

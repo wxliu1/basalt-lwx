@@ -333,6 +333,7 @@ bool BundleAdjustmentBase<Scalar_>::computeDelta(const AbsOrderMap& marg_order,
         return false;
       }
 
+      // kv.second.first是位姿的序号，getDelta()返回的是后端求解的位姿增量
       delta.template segment<POSE_SIZE>(kv.second.first) =
           frame_poses.at(kv.first).getDelta();
     } else if (kv.second.second == POSE_VEL_BIAS_SIZE) {
@@ -424,23 +425,30 @@ void BundleAdjustmentBase<Scalar_>::computeProjections(
   }
 }
 
+// @param[in] mld
+// @param[in] aom
+// @param[out] abs_H
+// @param[out] abs_b
+// @param[out] marg_prior_error
 template <class Scalar_>
 void BundleAdjustmentBase<Scalar_>::linearizeMargPrior(
     const MargLinData<Scalar>& mld, const AbsOrderMap& aom, MatX& abs_H,
     VecX& abs_b, Scalar& marg_prior_error) const {
   // Prior is ordered to be in the top left corner of Hessian
 
+  // marg之后的Hessian的列数等于marg之后位姿的总维数
   BASALT_ASSERT(size_t(mld.H.cols()) == mld.order.total_size);
 
   // Check if the order of variables is the same, and it's indeed top-left
   // corner
+  // 检查mld里面的帧序号是否在aom中是一样的
   for (const auto& kv : mld.order.abs_order_map) {
     UNUSED(aom);
     UNUSED(kv);
     BASALT_ASSERT(aom.abs_order_map.at(kv.first) == kv.second);
     BASALT_ASSERT(kv.second.first < int(mld.order.total_size));
   }
-
+  // TODO: 下面这一段的理解还不太透彻。另外J_m没有改变，意味着这里应用了FEJ???
   // Quadratic prior and "delta" of the current state to the original
   // linearization point give cost function
   //
@@ -472,14 +480,19 @@ void BundleAdjustmentBase<Scalar_>::linearizeMargPrior(
   // the cost before and after an update to delta in the optimization loop. This
   // also means the computed error can be negative.
 
+  // Quadratic [kwɒˈdrætɪk] adj. 二次的; n.  二次方程式;
+
   const size_t marg_size = mld.order.total_size;
 
   VecX delta;
   computeDelta(mld.order, delta);
 
   if (mld.is_sqrt) {
+    // 如果is_sqrt为true，那么mld.H = Q_2^T x J_p = J_m, mld.b = Q_2 x r = r_m
+    // 并且J_m^{\prime} = J_m, 那么H_m^{\prime} = H_m = J_m^T * J_m
     abs_H.topLeftCorner(marg_size, marg_size) += mld.H.transpose() * mld.H;
-
+    // 因为 r_m^{\prime} = r_m + J_m * δx,  J_m^{\prime} = J_m
+    // 所以b_m^{\prime} = J_m^T(等同于J_m一撇的转置) *  r_m^{\prime} = J_m^T * (r_m + J_m * δx)
     abs_b.head(marg_size) += mld.H.transpose() * (mld.b + mld.H * delta);
 
     marg_prior_error = delta.transpose() * mld.H.transpose() *

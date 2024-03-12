@@ -101,6 +101,11 @@ struct Calibration {
   /// Point in camera coordinate frame \f$ p_c \f$ can be transformed to the
   /// point in IMU coordinate frame as \f$ p_i = T_{ic} p_c, T_{ic} \in
   /// SE(3)\f$
+  // 对于camera坐标系下的一个点p_c, 能够被转换到IMU坐标系下的点p_i
+  // 即：p_i = T_{ic} p_c, T_{ic} \in SE(3)
+  // 这里外参T_i_c的size应该是2，
+  // T_i_c[0]表示左目到imu的变换，或者左目到左目的变换
+  // T_i_c[1]表示右目到imu的变换，或者右目到左目的变换
   Eigen::aligned_vector<SE3> T_i_c; // 相机到IMU的变换
 
   /// @brief Vector of camera intrinsics. Can store different camera models. See

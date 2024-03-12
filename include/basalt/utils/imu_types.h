@@ -248,11 +248,12 @@ struct PoseStateWithLin {
 
   inline const SE3& getPoseLin() const { return pose_linearized.T_w_i; }
 
+  // 未线性化时，位姿增量是更新在pose_linearized.T_w_i上，线性化之后，位姿增量更新在T_w_i_current上
   inline void applyInc(const VecN& inc) {
     if (!linearized) {
       PoseState<Scalar>::incPose(inc, pose_linearized.T_w_i);
     } else {
-      delta += inc;
+      delta += inc; //? 线性化之后，delta一直增加inc,是何道理???
       T_w_i_current = pose_linearized.T_w_i;
       PoseState<Scalar>::incPose(delta, T_w_i_current);
     }

@@ -57,8 +57,11 @@ class ScBundleAdjustmentBase : public BundleAdjustmentBase<Scalar_> {
   using SE3 = Sophus::SE3<Scalar>;
 
   struct RelLinDataBase {
+    // std::pair<TimeCamId,TimeCamId> 是该host camframe id和一个target camframe id 组成的结构,
+    // 用一个vector保存该host camframe所关联到的所有target camframe的组合.
     std::vector<std::pair<TimeCamId, TimeCamId>> order;
 
+    // 下面两个vector向量长度和order一样，表示对应的相对姿态与host, target的导数.
     Eigen::aligned_vector<Mat6> d_rel_d_h;
     Eigen::aligned_vector<Mat6> d_rel_d_t;
   };
@@ -251,6 +254,12 @@ class ScBundleAdjustmentBase : public BundleAdjustmentBase<Scalar_> {
       const Vec3& gyro_bias_weight, const Vec3& accel_bias_weight,
       const Vec3& g);
 
+
+
+  // 对每个host frame形成的子图，都会调用一次该函数 
+  // rel_H, rel_b就是每个子图Schur后形成的H矩阵和b向量，都以同一host frame为参考坐标系。
+  // aom 保存这些子图中的id和sliding window id的对应关系；
+  // accum 用来维护整个sliding window的H矩阵和b向量。
   template <class AccumT>
   static void linearizeAbs(const MatX& rel_H, const VecX& rel_b,
                            const RelLinDataBase& rld, const AbsOrderMap& aom,
@@ -268,6 +277,7 @@ class ScBundleAdjustmentBase : public BundleAdjustmentBase<Scalar_> {
       int abs_h_idx = aom.abs_order_map.at(tcid_h.frame_id).first;
       int abs_ti_idx = aom.abs_order_map.at(tcid_ti.frame_id).first;
 
+      // 链式法则，求出VIO坐标系下的b向量。
       accum.template addB<POSE_SIZE>(
           abs_h_idx, rld.d_rel_d_h[i].transpose() *
                          rel_b.template segment<POSE_SIZE>(i * POSE_SIZE));
@@ -286,6 +296,7 @@ class ScBundleAdjustmentBase : public BundleAdjustmentBase<Scalar_> {
             tcid_h.frame_id == tcid_tj.frame_id)
           continue;
 
+        // 链式法则，求出VIO坐标系下的H矩阵。
         accum.template addH<POSE_SIZE, POSE_SIZE>(
             abs_h_idx, abs_h_idx,
             rld.d_rel_d_h[i].transpose() *

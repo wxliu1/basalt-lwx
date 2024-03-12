@@ -233,7 +233,7 @@ class SqrtKeypointVoEstimator : public VioEstimatorBase,
   // Input
 
   // 补充[2024-2-23]: prev_opt_flow_res开始也会存储非kf的帧，但是在marginalize时，会删除除当前帧之外的非关键帧
-  Eigen::aligned_map<int64_t, OpticalFlowResult::Ptr> prev_opt_flow_res; // 这里面存储的应该是滑窗里面所有关键帧的光流结果
+  Eigen::aligned_map<int64_t, OpticalFlowResult::Ptr> prev_opt_flow_res; // 这里面存储的应该是滑窗里面所有关键帧的光流结果，key is timestamp & value is optical flow result.
 
   std::map<int64_t, int> num_points_kf;
 

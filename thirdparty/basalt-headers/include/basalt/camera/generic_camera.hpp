@@ -70,7 +70,7 @@ class GenericCamera {
   using Mat42 = Eigen::Matrix<Scalar, 4, 2>;
   using Mat4 = Eigen::Matrix<Scalar, 4, 4>;
 
-  /// Possible variants of camera models.
+  /// Possible variants of camera models. 相机模型的变体
   using VariantT =
       std::variant<ExtendedUnifiedCamera<Scalar>, DoubleSphereCamera<Scalar>,
                    KannalaBrandtCamera4<Scalar>, UnifiedCamera<Scalar>,

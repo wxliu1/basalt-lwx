@@ -99,7 +99,7 @@ SqrtKeypointVoEstimator<Scalar_>::SqrtKeypointVoEstimator(
   // prior on pose 位姿先验
   if (marg_data.is_sqrt) {
     marg_data.H.diagonal().setConstant(
-        std::sqrt(Scalar(config.vio_init_pose_weight))); // marg矩阵H的对角线设置为常量'初始位姿权重'，初始值为1e8
+        std::sqrt(Scalar(config.vio_init_pose_weight))); // marg矩阵H的对角线设置为常量'初始位姿权重'，初始值为1e8, 开方后为1e4.
   } else {
     marg_data.H.diagonal().setConstant(Scalar(config.vio_init_pose_weight));
   }
@@ -616,11 +616,12 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
     TimeCamId tcidl(opt_flow_meas->t_ns, 0);
 
     int num_points_added = 0;
-    for (int lm_id : unconnected_obs0) { // 遍历未连接的特征点id，即新提取的FAST角点
+    for (int lm_id : unconnected_obs0) { // 遍历未连接的特征点id，即新提取的FAST角点 //![2024-3-1] 后半句未必准确。
       // Find all observations
       std::map<TimeCamId, KeypointObservation<Scalar>> kp_obs;
 
       // ??? review时发现：这里有必要遍历prev_opt_flow_res吗？？因为当前帧的新提取的点，肯定只能在当前左帧和右帧中才能查找的到
+      //![2024-3-1] 再次review发现:lm_id不一定是当前帧的新提取的点，还有可能是之前某个帧新提取的点，只不过未能三角化，因而没有存储到lmdb
       // 对于当前帧的一个未连接的特征点：
       // 先按光流结果遍历，再按相机遍历，查找特征点（相当于滑窗每个帧，查找2次特征点）
       for (const auto& kv : prev_opt_flow_res) { // 遍历所有帧的光流结果：kv是时间戳和光流结果的键值对。
@@ -714,6 +715,16 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
         // observations; may speed up later joint optimization
       }
     }
+
+    /*
+     * 关于上述未连接的路标点的处理过程，补充说明一下：
+     * 1、对于未连接的每一个点（在lmdb中查找不到），遍历prev_opt_flow_res，查找lm_id相同的路标点，
+     * 2、如查找到了，则把帧的timestamp +CamId作为key,以及lm_id和pos作为value, 尽数存储到kp_obs.
+     * 3、遍历kp_obs，与当前帧的光流结果opt_flow_meas中的lm_id的路标点进行三角化，如果三角化成功，
+     * 4、以当前帧作为host frame，将成功恢复逆深度的3d点加入到landmark数据库，即添加到kpts.
+     * 5、将观测到lm_id的所有帧的路标点加入到lmdb的observations, 同时也会往kpts[lm_Id].obs中添加观测。
+     * 6、回到步骤1循环处理，直到所有未连接的点全部处理完毕，只有初始化了逆深度的点才会添加到lmdb.
+     */
 
     num_points_kf[opt_flow_meas->t_ns] = num_points_added; // 统计当前kf新添加的特征点的个数
   } else {
@@ -1134,12 +1145,14 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
       aom.items = marg_data.order.items;
 
       //[1] 把marg帧作为host frame, 其对应的target frame加入到aom.abs_order_map
+      // 意即：如果一个观测的host frame是需要被marg的帧，观测的target frame在frame_poses中，则把该target frame加入到aom.abs_order_map
+      // 如此一来，那么被marg帧，以及存在共视的target frame都会被加入到aom.abs_order_map
       for (const auto& kv : frame_poses) {
         if (aom.abs_order_map.count(kv.first) == 0) {
           // step1 如果frame_poses里面的帧kv在aom.abs_order_map中找不到，
           // step2 则先从lmdb的观测中查找host frame id 如果其属于marg frame id，
           // step3 则进一步查找该host frame id 对应的目标帧容器，如果target frame id属于frame_poses中的一帧，
-          // step4 则add_pose置为true，先后跳出step3, step2，
+          // step4 则add_pose置为true，先后跳出step3, step2两层循环，
           // step5 更新aom,增加items以及pose的total size,以及abs_order_map的键值对，接着回到step1。
           bool add_pose = false;
 
@@ -1282,9 +1295,9 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
         
         lqr->linearizeProblem();
         lqr->performQR(); // 这里相当于进行nullspace marginalization.得到Q_2^T * J_p和Q_2 * r 
-                          // 这一步其实和optimize()里面的步骤是一样的。即使用ns，用于marginalize landmarks 
+                          // 这一步其实和optimize()里面的步骤是一样的。使用ns，用于marginalize landmarks 
 
-        // vio_sqrt_marg默认配置项为true.
+        // vio_sqrt_marg默认配置项为true, 因此 marg_data.is_sqrt也为true。
         if (is_lin_sqrt && marg_data.is_sqrt) {
           lqr->get_dense_Q2Jp_Q2r(Q2Jp_or_H, Q2r_or_b);
         } else {
@@ -1422,7 +1435,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
 
       for (auto& kv : frame_poses) {
         if (aom.abs_order_map.count(kv.first) > 0) {
-          if (!kv.second.isLinearized()) kv.second.setLinTrue();
+          if (!kv.second.isLinearized()) kv.second.setLinTrue(); //? 加入到aom.abs_order_map的帧，才会设置线性化为true.
         }
       }
 
@@ -1550,6 +1563,8 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
   aom.total_size = marg_data.order.total_size; // 在initialize函数中total_size = POSE_SIZE = 6.
   aom.items = marg_data.order.items; // 在initialize函数中items = 1.
 
+  // marg_data.H和marg_data.b初始化时分别是6*6和6*1的0矩阵
+
   // frame_poses的每一个元素: key is a timestamp & value is a struct type of PoseStateWithLin including T_w_i_current
   // 该for loop，统计pose的总个数和维数
   for (const auto& kv : frame_poses) {
@@ -1619,8 +1634,9 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
 
     // ? 线性化残差，这一部分是求jacobian矩阵，具体细节值得细看
     // linearize residuals
-    bool numerically_valid;
-    error_total = lqr->linearizeProblem(&numerically_valid); // 线性化为了得到landmark_block的storage矩阵[J_p | pad | J_l | res]
+    bool numerically_valid; // 线性化路标点是否数字上有效
+    // 线性化为了得到所有路标点的landmark_block, 每个landmark block 的storage矩阵: [J_p | pad | J_l | res]
+    error_total = lqr->linearizeProblem(&numerically_valid);
     BASALT_ASSERT_STREAM(
         numerically_valid,
         "did not expect numerical failure during linearization");
@@ -1639,9 +1655,10 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
     //      }
 
     // ? 在适当位置边缘化点
+    // 答疑解惑[2024-3-8]: 就地边缘化(in-place marginalization), 意即不进行拷贝和移动，在storage矩阵上进行原地操作
     // marginalize points in place
-    lqr->performQR(); // landmark_block的storage矩阵从[J_p | pad | J_l | res] 转换为 [Q_1^T J_p | R_1 | Q_1^T res]
-                      //                                                            [Q_2^T J_p | 0   | Q_2^T res]
+    lqr->performQR(); // 所有路标点的每个landmark_block的storage矩阵从[J_p | pad | J_l | res] 转换为 [Q_1^T J_p | R_1 | Q_1^T res]
+                      //                                                                          [Q_2^T J_p | 0   | Q_2^T res]
 
     stats.add("performQR", t.reset()).format("ms");
 
@@ -1713,6 +1730,7 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
         MatX H;
         VecX b;
 
+        // 看上面的注释部分// set (updated) damping for poses，因此landmark block中并未用到位姿阻尼
         lqr->get_dense_H_b(H, b); // 经过NS之后marg掉landmarks，得到稠密的位姿hessian矩阵H,维度已经大大降低
 
         stats.add("get_dense_H_b", t.reset()).format("ms");
@@ -1720,18 +1738,20 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
         int iter = 0;
         bool inc_valid = false;
         constexpr int max_num_iter = 3;
-
+        // 在solve RCS时，才加入阻尼： lambda的初始值赋值为config.vio_lm_lambda_initial，1e-4
         while (iter < max_num_iter && !inc_valid) {
           VecX Hdiag_lambda = (H.diagonal() * lambda).cwiseMax(min_lambda);
           MatX H_copy = H;
           H_copy.diagonal() += Hdiag_lambda;
 
           Eigen::LDLT<Eigen::Ref<MatX>> ldlt(H_copy);
+          ///TODO: Hδx = -b. 为啥这里没有体现负号??? 难道是$\widetilde{H}_{pp}(-∆x_p) = \widetilde{b_p}$???
+          // 除非这里求的位姿增量inc是-{\Delta}x_p^*
           inc = ldlt.solve(b); // ldlt分解是 下三角矩阵 * 对角矩阵 * 下三角矩阵的转置
           stats.add("solve", t.reset()).format("ms");
 
           if (!inc.array().isFinite().all()) {
-            lambda = lambda_vee * lambda;
+            lambda = lambda_vee * lambda; // lambda_vee初值为2.
             lambda_vee *= vee_factor;
           } else {
             inc_valid = true;
@@ -1746,16 +1766,16 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
       }
 
       // backup state (then apply increment and check cost decrease)
-      backup();
+      backup(); // 对delta \ pose_linearized \ T_w_i_current3个分量进行备份
 
       // TODO: directly invert pose increment when solving; change SC
       // `updatePoints` to recieve unnegated increment
 
-      // backsubstitute (with scaled pose increment)
+      // backsubstitute (with scaled pose increment) 用位姿增量回代
       Scalar l_diff = 0;
       {
-        // negate pose increment before point update
-        inc = -inc;
+        // negate pose increment before point update 点更新前使求得到的位姿增量符号反向
+        inc = -inc; // -Δxp 转换为Δxp
 
         Timer t;
         // 将求得的位姿增量的解转化为-Δxp，进行回代来求解路标点的增量Δxl

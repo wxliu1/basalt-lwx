@@ -65,8 +65,10 @@ struct Keypoint {
   // Observations
   TimeCamId host_kf_id; // 主帧id
   ObsMap obs; // 观测map(key是观测的timestamp & camera id, value是 赤平面向量)
+              // 观测obs,应该也包含host frame的数据
 
   //? backup和restore函数用于将数据进行备份和恢复(这里可能是为fej准备的)。
+  //![2024-3-7] 这里的backup和restore不是为fej准备的，而是用于LM法迭代后检查cost如果没有decrease，则回滚状态并重新迭代 
   inline void backup() {
     backup_direction = direction;
     backup_inv_dist = inv_dist;
