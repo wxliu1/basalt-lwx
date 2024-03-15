@@ -59,8 +59,8 @@ struct Keypoint {
   using MapIter = typename ObsMap::iterator;
 
   // 3D position parameters
-  Vec2 direction; //  在赤平面的投影
-  Scalar inv_dist; // 逆深度
+  Vec2 direction; //  在赤平面的投影 (u, v)
+  Scalar inv_dist; // 逆深度 d
 
   // Observations
   TimeCamId host_kf_id; // 主帧id

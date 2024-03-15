@@ -335,7 +335,7 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
     // 因此这儿路标增量等价于inc=-Q1Jl^{-1} * (Q1Jr + Q1Jp * pose_inc)
     // 即$inc=-R_1^{-1}(Q_1^T r + Q_1^T J_p {\Delta}x_p^*)$ 详见rootba (16).
     Vec3 inc = -Q1Jl.solve(Q1Jr + Q1Jp * pose_inc);
-
+    ///TODO: 下面的代价模型函数，怎么理解??
     // We want to compute the model cost change. The model function is
     //
     //     L(inc) = F(x) + inc^T J^T r + 0.5 inc^T J^T J inc
@@ -570,7 +570,7 @@ class LandmarkBlockAbsDynamic : public LandmarkBlock<Scalar> {
     BASALT_ASSERT(Q2Jp.cols() == signed_cast(padding_idx));
 
     // 从storage中第3行第0列开始的(num_rows - 3)行和padding_idx列个元素，赋值到
-    // Q2Jp的第start_idx开始，第0列的(num_rows - 3)行和padding_idx列个元素上。
+    // Q2Jp的第start_idx行开始，第0列的(num_rows - 3)行和padding_idx列个元素上。
     // 简单说：把storage中索引index(3, 0)开始的块block(num_rows - 3, padding_idx)上的元素赋值到
     // Q2Jp中索引(start_idx, 0)开始的块(num_rows - 3, padding_idx)上。
     Q2Jp.block(start_idx, 0, num_rows - 3, padding_idx) =

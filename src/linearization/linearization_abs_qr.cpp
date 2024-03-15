@@ -116,10 +116,11 @@ LinearizationAbsQR<Scalar, POSE_SIZE>::LinearizationAbsQR(
   num_cameras = frame_poses.size(); // 相机帧数
 
   landmark_ids.clear();
-  for (const auto& [k, v] : lmdb_.getLandmarks()) {
+  for (const auto& [k, v] : lmdb_.getLandmarks()) { // k是特征点id, v是特征点
     if (used_frames || lost_landmarks) {
+      //- marginalize()时，被marg帧作为host frame的landmarks, 以及lost_landmarks都将作为被marg的点添加进来
       if (used_frames && used_frames->count(v.host_kf_id.frame_id)) {
-        landmark_ids.emplace_back(k);
+        landmark_ids.emplace_back(k); // 如果路标点的host frame是被marg的帧，则也添加进来
       } else if (lost_landmarks && lost_landmarks->count(k)) {
         landmark_ids.emplace_back(k); // marginalize()时，执行该行，添加需要被marg的landmark id
       }
@@ -383,9 +384,9 @@ Scalar LinearizationAbsQR<Scalar, POSE_SIZE>::backSubstitute(
   };
 
   tbb::blocked_range<size_t> range(0, landmark_block_idx.size());
+  // 返回汇总的cost difference
   Scalar l_diff =
       tbb::parallel_reduce(range, Scalar(0), body, std::plus<Scalar>());
-
   if (imu_lin_data) {
     for (auto& imu_block : imu_blocks) {
       imu_block->backSubstitute(pose_inc, l_diff);
@@ -396,6 +397,7 @@ Scalar LinearizationAbsQR<Scalar, POSE_SIZE>::backSubstitute(
     size_t marg_size = marg_lin_data->H.cols();
     VecX pose_inc_marg = pose_inc.head(marg_size);
 
+    // 加上marg prior的cost change
     l_diff += estimator->computeMargPriorModelCostChange(
         *marg_lin_data, marg_scaling, pose_inc_marg);
   }
@@ -563,12 +565,17 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::setLandmarkDamping(Scalar lambda) {
   tbb::parallel_for(range, body);
 }
 
+// @brief get_dense_Q2Jp_Q2r这个函数与get_dense_H_b最大的不同是：
+// 后者把每个landmark block的\widetilde{H}_{pp}和\widetilde{b_p}叠加起来，
+// 而前者把每个landmark block的Q_2^T x J_p和Q_2^T x r, 赋值到大矩阵Q2Jp和Q2r相应的位置上
+// Q2Jp中按行排列所有的Q_2^T x J_p和H_m^{\prime}
+// Q2r中按行排列所有的Q_2^T x r和b_m^{\prime}
 template <typename Scalar, int POSE_SIZE>
 void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_Q2Jp_Q2r(
     MatX& Q2Jp, VecX& Q2r) const {
   // num_rows_Q2r保存的是所有landmarks的Q_2^T x r行数之和，而landmark_block_idx[i]保存的是每一个landmark在大的Q2r和大的Q2Jp中的序号
-  size_t total_size = num_rows_Q2r;
-  size_t poses_size = aom.total_size;
+  size_t total_size = num_rows_Q2r; // 所有landmark block的Q_2^T x r 的行数之和
+  size_t poses_size = aom.total_size; // 参与marg的pose总维数
 
   size_t lm_start_idx = 0;
 
@@ -580,7 +587,7 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_Q2Jp_Q2r(
 
   // Space for damping if present
   size_t damping_start_idx = total_size;
-  if (hasPoseDamping()) {
+  if (hasPoseDamping()) { // 至少vo模式下，并没有用的damping
     total_size += poses_size;
   }
 
@@ -588,18 +595,20 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_Q2Jp_Q2r(
   size_t marg_start_idx = total_size;
   if (marg_lin_data) total_size += marg_lin_data->H.rows();
 
-  Q2Jp.setZero(total_size, poses_size);
+  Q2Jp.setZero(total_size, poses_size); // 设置Q2Jp的维数，row_num=total_size, col_num=poses_size
   Q2r.setZero(total_size);
 
   auto body = [&](const tbb::blocked_range<size_t>& range) {
     for (size_t r = range.begin(); r != range.end(); ++r) {
       const auto& lb = landmark_blocks[r];
+      // landmark_block_idx[r] 返回的是每个landmark block 在大的Q2r和大的Q2Jp中的序号
+      // 从landmark block的storage矩阵中取出Q_2^T x J_p和Q_2^T x r, 赋值到大矩阵Q2Jp和Q2r相应的位置上
       lb->get_dense_Q2Jp_Q2r(Q2Jp, Q2r, lm_start_idx + landmark_block_idx[r]);
     }
   };
 
   // go over all host frames
-  // range的范围是0到参与优化的landmarks总个数，即: range ∈ [0, num_landmakrs)
+  // range的范围是0到参与optimize或者marg的landmarks总个数，即: range ∈ [0, num_landmakrs)
   tbb::blocked_range<size_t> range(0, landmark_block_idx.size());
   tbb::parallel_for(range, body);
   // body(range);
@@ -615,7 +624,7 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_Q2Jp_Q2r(
   // Add damping
   get_dense_Q2Jp_Q2r_pose_damping(Q2Jp, damping_start_idx); // 至少vo模式下，阻尼并没有用到
 
-  // Add marginalization 添加边缘化先验
+  // Add marginalization 添加边缘化先验 ，初始先验是6x6的对角阵（对角元素1e4）
   get_dense_Q2Jp_Q2r_marg_prior(Q2Jp, Q2r, marg_start_idx); // marg_start_idx是先验在Q2Jp中的行的起始索引
 }
 
@@ -671,7 +680,7 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_H_b(MatX& H,
   add_dense_H_b_imu(r.H_, r.b_);
 
   // Add damping
-  add_dense_H_b_pose_damping(r.H_);
+  add_dense_H_b_pose_damping(r.H_); // 看sqrt_keypoint_vo模式下，并没有用到damping
 
   // Add marginalization 添加marg先验
   // 分别在r.H_的左上角加上H_m^{\prime}, 在r.b_的头部加上b_m^{\prime}, 即：
@@ -706,7 +715,10 @@ void LinearizationAbsQR<Scalar, POSE_SIZE>::get_dense_Q2Jp_Q2r_marg_prior(
   size_t marg_cols = marg_lin_data->H.cols();
 
   VecX delta;
-  estimator->computeDelta(marg_lin_data->order, delta);
+  estimator->computeDelta(marg_lin_data->order, delta); // 获取线性化之后的状态量的累计增量
+  // 用线性化之后累计的增量delta 来更新先验信息
+  // H_m_new = H_m 雅可比被固定住了，
+  // b_m_new = b_m + H_m * delta 但是残差r随着状态量优化，在不断变化，因而b也变化了。
 
   if (marg_scaling.rows() > 0) {
     Q2Jp.template block(start_idx, 0, marg_rows, marg_cols) =

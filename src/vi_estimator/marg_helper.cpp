@@ -38,6 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace basalt {
 
+// @brief lwx add: 简化相机系统的位姿边缘化（已经提前marg掉landmark了），RCS的帧变量边缘化Frame variable marginalization
 template <class Scalar_>
 void MargHelper<Scalar_>::marginalizeHelperSqToSq(
     MatX& abs_H, VecX& abs_b, const std::set<int>& idx_to_keep,
@@ -51,6 +52,7 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSq(
   Eigen::Matrix<int, Eigen::Dynamic, 1> indices(idx_to_keep.size() +
                                                 idx_to_marg.size());
 
+  // 将H矩阵的变量重新排序，将保留的变量放在H矩阵的前面
   {
     auto it = idx_to_keep.begin();
     for (size_t i = 0; i < idx_to_keep.size(); i++) {
@@ -59,6 +61,7 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSq(
     }
   }
 
+  // 遍历边缘化的变量，将要边缘化的变量放在H矩阵的后面
   {
     auto it = idx_to_marg.begin();
     for (size_t i = 0; i < idx_to_marg.size(); i++) {
@@ -72,6 +75,8 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSq(
 
   const Eigen::PermutationMatrix<Eigen::Dynamic> pt = p.transpose();
 
+  // 将要marg的变量移动到hessian矩阵的右下角
+  // 即：将需要被marg的帧移动到H矩阵的右下角，为下面的schur complement做准备
   abs_b.applyOnTheLeft(pt);
   abs_H.applyOnTheLeft(pt);
   abs_H.applyOnTheRight(p);
@@ -98,6 +103,7 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSq(
   //      abs_H.bottomRightCorner(marg_size, marg_size)
   //          .jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV);
 
+  // hessian矩阵舒尔补
   // Eigen version of pseudoinverse
   auto H_mm_decomposition = abs_H.bottomRightCorner(marg_size, marg_size)
                                 .completeOrthogonalDecomposition();
@@ -110,6 +116,7 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSq(
   //          .solve(abs_H.topRightCorner(keep_size, marg_size).transpose())
   //          .transpose();
 
+  // 以下是标准的Schur complement.将右下角的帧marg掉
   marg_H = abs_H.topLeftCorner(keep_size, keep_size);
   marg_b = abs_b.head(keep_size);
 
@@ -204,6 +211,7 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSqrt(
   MatX marg_H;
   VecX marg_b;
 
+  // 应用Schur complement marg掉右下角的帧，得到marg后的矩阵marg_H
   marg_H = abs_H.topLeftCorner(keep_size, keep_size);
   marg_b = abs_b.head(keep_size);
 
@@ -211,8 +219,11 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSqrt(
             abs_H.bottomLeftCorner(marg_size, keep_size);
   marg_b -= abs_H.topRightCorner(keep_size, marg_size) * abs_b.tail(marg_size);
 
+  // 应用LDLT分解，得到marg_H == P^T*L*D*L^T*P
+  // 所以我们要计算的平方根为marg_sqrt_H = sqrt(D)*L^T*P
   Eigen::LDLT<Eigen::Ref<MatX>> ldlt(marg_H);
 
+  // 计算sqrt(D)
   VecX D_sqrt = ldlt.vectorD().array().max(0).sqrt().matrix();
 
   // After LDLT, we have
@@ -222,9 +233,9 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSqrt(
   // such that
   //     marg_sqrt_H^T marg_sqrt_H == marg_H.
   marg_sqrt_H.setIdentity(keep_size, keep_size);
-  marg_sqrt_H = ldlt.transpositionsP() * marg_sqrt_H;
-  marg_sqrt_H = ldlt.matrixU() * marg_sqrt_H;  // U == L^T
-  marg_sqrt_H = D_sqrt.asDiagonal() * marg_sqrt_H;
+  marg_sqrt_H = ldlt.transpositionsP() * marg_sqrt_H; // 这一步得到P * I
+  marg_sqrt_H = ldlt.matrixU() * marg_sqrt_H;  // U == L^T // 这一步得到L^T*P*I
+  marg_sqrt_H = D_sqrt.asDiagonal() * marg_sqrt_H; // 这一步得到sqrt(D)*L^T*P*I
 
   // For the right hand side, we want
   //     marg_b == marg_sqrt_H^T * marg_sqrt_b
@@ -232,14 +243,20 @@ void MargHelper<Scalar_>::marginalizeHelperSqToSqrt(
   //     marg_sqrt_b = (marg_sqrt_H^T)^-1 * marg_b
   //                 = (P^T*L*sqrt(D))^-1 * marg_b
   //                 = sqrt(D)^-1 * L^-1 * P * marg_b
-  marg_sqrt_b = ldlt.transpositionsP() * marg_b;
-  ldlt.matrixL().solveInPlace(marg_sqrt_b);
+  // 对于线性方程式的右边，我们要计算的平方根为marg_sqrt_b = (marg_sqrt_H^T)^-1 * marg_b
+  // 即，计算：marg_sqrt_b = sqrt(D)^-1 * L^-1 * P * marg_b
+  marg_sqrt_b = ldlt.transpositionsP() * marg_b; // 这一步得到P * marg_b
+  // ldlt.marixL()返回的就是矩阵L
+  // 然后下面这行相当于求方程式Lx= marg_sqrt_b的解，得到x= L^-1*marg_sqrt_b
+  ldlt.matrixL().solveInPlace(marg_sqrt_b); // 这一步得到 L^-1 * P * marg_b
 
   // We already clamped negative values in D_sqrt to 0 above, but for values
   // close to 0 we set b to 0.
+  // 我们已经将d_sqrt中的负值夹在0以上 但是接近0的，在b中设置为0.
+  // 以下for循环是为了得到marg_sqrt_b = sqrt(D)^-1 * marg_sqrt_b= sqrt(D)^-1* L^-1 * P * marg_b
   for (int i = 0; i < marg_sqrt_b.size(); ++i) {
     if (D_sqrt(i) > std::sqrt(std::numeric_limits<Scalar>::min()))
-      marg_sqrt_b(i) /= D_sqrt(i);
+      marg_sqrt_b(i) /= D_sqrt(i); // b的每一行除以D_sqrt(i)，相当于sqrt(D)^-1 * b
     else
       marg_sqrt_b(i) = 0;
   }
@@ -290,6 +307,7 @@ void MargHelper<Scalar_>::marginalizeHelperSqrtToSqrt(
   }
 
   // 注意notice: Eigen::PermutationWrapper是列主导，不是行主导，该操作使 p 成为真正的置换矩阵
+  // 20240315: 置换矩阵p是一个方阵，其行和列的维数都是(keep_size + marg_size), 并且(keep_size + marg_size) == Q2Jp.cols()
   // TODO: check if using TranspositionMatrix is faster
   const Eigen::PermutationWrapper<Eigen::Matrix<int, Eigen::Dynamic, 1>> p(
       indices);
@@ -297,15 +315,27 @@ void MargHelper<Scalar_>::marginalizeHelperSqrtToSqrt(
   // 先看公式：A.applyOnTheRight(B);  // equivalent to A *= B
   // A.applyOnTheLeft(B); // equivalent to A = B * A
   // 那么这里表示Q2Jp = Q2Jp * p
-  // 要被边缘化的帧状态被排序到最左边的列中 (摘自：frame states to be marginalized are sorted into the leftmost columns)
+  // 要被边缘化的帧状态被排序到最左边的列中 (摘自rootvo_slides.pdf：frame states to be marginalized are sorted into the leftmost columns)
+  //-20240315补充：对Q2Jp的列按位姿的6维为单位进行重排列，使得被marg的帧排在Q2Jp的前面列，被保留的帧排在Q2Jp的后面列中。其实就是帧顺序重新排列了，导致Q2Jp顺序也相应的需要调整一下。
   Q2Jp.applyOnTheRight(p); // 这里右乘置换矩阵，表示将Q2Jp相应的列进行交换，使得被marg部分位于前面的列，保留部分位于后面的列
                            // 左乘置换矩阵，交换矩阵的行，右乘置换矩阵，交换矩阵的列
                            // 当一个矩阵乘上一个置换矩阵时，所得到的是原来矩阵的横行（置换矩阵在左）或纵列（置换矩阵在右）经过置换后得到的矩阵。
 
   Eigen::Index marg_rank = 0;
   Eigen::Index total_rank = 0;
-
-  // 然后连续的Householder变换得到上三角矩阵（Successive in-place Householder transformations result in upper-triangular matrix）
+  /*
+   * 2024-3-15:
+   * 摘自rootvo_slides.pdf
+   * start with reduced camera system in Jacobian form (including the old marginalization prior and possibly inertial residuals)
+   * 从雅可比形式的简化相机系统开始（包括老的边缘化先验和可能的惯性残差）
+   * 要被边缘化的帧状态被排序到最左边的列中 (frame states to be marginalized are sorted into the leftmost columns)
+   * 连续的就地Householder变换得到上三角矩阵 (Successive in-place Householder transformations result in upper-triangular matrix)
+   * 边缘化状态的列和对应的顶部行，以及底部的零行将被删除(Columns for marginalized states and corresponding top-rows, and zero rows at the bottom are dropped)
+  */
+  // 摘自root vo论文: Jacobian and residual vector (after landmark marginalization) consist of residuals 
+  // that depend on µ-variables and were active up to now and a marginalization prior (left).
+  // 重新排列Q2Jp之后，对应root vo论文Figure 2左图
+  // 下面开始应用QR marginalization of frame variables
   {
     const Scalar rank_threshold =
         std::sqrt(std::numeric_limits<Scalar>::epsilon()); // epsilon=2.22045e-16一个很小的小量

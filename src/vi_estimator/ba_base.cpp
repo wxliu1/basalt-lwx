@@ -333,7 +333,7 @@ bool BundleAdjustmentBase<Scalar_>::computeDelta(const AbsOrderMap& marg_order,
         return false;
       }
 
-      // kv.second.first是位姿的序号，getDelta()返回的是后端求解的位姿增量
+      // kv.second.first是位姿的序号，getDelta()返回的是线性化之后累计的位姿增量
       delta.template segment<POSE_SIZE>(kv.second.first) =
           frame_poses.at(kv.first).getDelta();
     } else if (kv.second.second == POSE_VEL_BIAS_SIZE) {
@@ -448,7 +448,7 @@ void BundleAdjustmentBase<Scalar_>::linearizeMargPrior(
     BASALT_ASSERT(aom.abs_order_map.at(kv.first) == kv.second);
     BASALT_ASSERT(kv.second.first < int(mld.order.total_size));
   }
-  // TODO: 下面这一段的理解还不太透彻。另外J_m没有改变，意味着这里应用了FEJ???
+  //TODO: 下面这一段的理解还不太透彻。另外J_m没有改变，意味着这里应用了FEJ???
   // Quadratic prior and "delta" of the current state to the original
   // linearization point give cost function
   //

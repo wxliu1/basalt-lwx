@@ -254,6 +254,8 @@ struct PoseStateWithLin {
       PoseState<Scalar>::incPose(inc, pose_linearized.T_w_i);
     } else {
       delta += inc; //? 线性化之后，delta一直增加inc,是何道理???
+      /// 2024-3-12 似乎看懂了一点：
+      /// 线性化后的位姿更新，是用线性化点处的位姿加上累计的增量来得到最新的位姿
       T_w_i_current = pose_linearized.T_w_i;
       PoseState<Scalar>::incPose(delta, T_w_i_current);
     }

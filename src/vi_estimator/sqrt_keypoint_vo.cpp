@@ -1035,17 +1035,20 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
       }
     }
 
-    // 删除除了当前帧之外的非关键帧
+    // step1 删除除了当前帧之外的非关键帧
+    // Notice:如果被marg的帧为空，那么marginalize()就只是仅仅删除非关键帧，就返回了。
+    // 意味着，只有kf_ids.size() > max_kfs, 才会真正的marg。
     for (int64_t id : non_kf_poses) {
       frame_poses.erase(id);
       lmdb.removeFrame(id);
       prev_opt_flow_res.erase(id);
     }
 
-    auto kf_ids_all = kf_ids;
+    auto kf_ids_all = kf_ids; // 备份当前所有关键帧id
+    // step2 挑选需要被marg的关键帧
     // 如果kf_ids的数量大于sliding window size,则选择用于边缘化的帧序号，存储到kfs_to_marg
     std::set<FrameId> kfs_to_marg;
-    // max_kfs为最大关键帧数，根据配置项来设定
+    // max_kfs为最大关键帧数，根据配置项来设定（比如为5）
     while (kf_ids.size() > max_kfs) {
       int64_t id_to_marg = -1; // 用于保存即将被边缘化的frame id,其实就是以纳秒为单位的时间戳
 
@@ -1056,7 +1059,8 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
         // Note: size > 2 check is to ensure prev(kf_ids.end(), 2) is valid
         auto end_minus_2 = std::prev(kf_ids.end(), 2);
 
-        // 从最老的关键帧开始，遍历到次新关键帧之前的一帧
+        // 从最老的关键帧开始（并且跳过最新的2个关键帧），遍历到次新关键帧之前的一帧
+        // 即：从最老的关键帧开始，一直遍历到倒数第3个关键帧结束
         for (auto it = kf_ids.begin(); it != end_minus_2; ++it) {
           // 如果该关键帧的路标，没有被当前帧跟踪，或者被当前帧跟踪的路标点的个数与该关键帧新添加的特征点的个数比值小于一个小的百分比
           // 则保存该关键帧的时间戳(frame id)
@@ -1135,12 +1139,13 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
     // 主要是为了构建：aom.abs_order_map:
     // 1、把marg帧作为host frame, 其对应的target frame加入到aom.abs_order_map
     // 2、把每个 lost landmark 对应的 host frame 和 target frame 加入到aom.abs_order_map
+    // step3 把需要被marg的帧和被marg的路标点相关联的所有帧加入到AbsOrderMap
     AbsOrderMap aom;
     {
       // 返回的obs是host frame id和 [target frame id, lm_ids]（目标帧id和路标点id集也是map容器键值对） 组成的键值对
       const auto& obs = lmdb.getObservations();
 
-      aom.abs_order_map = marg_data.order.abs_order_map;
+      aom.abs_order_map = marg_data.order.abs_order_map; //- 20240314: 初始化时marg_data把第一个帧加进来了，并且marg_data.H是6x6的对角阵，对角元素1e4
       aom.total_size = marg_data.order.total_size;
       aom.items = marg_data.order.items;
 
@@ -1249,6 +1254,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
       }
     }
 
+    // step4: 开始marg
     if (!kfs_to_marg.empty()) {
       // 被marg的kf容器不为空，才会真正执行边缘化
       Timer t_actual_marg;
@@ -1286,20 +1292,22 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
         // 而marginalize中的aom保存的是需要被marg的帧和与被marg帧存在共视的帧，以及观测到lost landmarks的帧，
         // 另外，marginalize时，还多了kfs_to_marg和lost_landmaks两个参数。
         // 此处构建lqr，实际调用了linearization_abs_qr.cpp文件里的LinearizationAbsQR构造函数
-        // TODO: LinearizationAbsQR构造函数值得细看
+        //TODO: LinearizationAbsQR构造函数值得细看
         // 再补充说一下：这里是把跟marg帧相关的target frame，以及跟lost landmark相关的host frame 和target frame,
         // 以及 lost landmarks一起来构建marg Hessian矩阵（或者说是构建Jacobian矩阵），然后得到Q_2^T * J_p和Q_2 * r
         auto lqr = LinearizationBase<Scalar, POSE_SIZE>::create(
             this, aom, lqr_options, &marg_data, nullptr, &kfs_to_marg,
             &lost_landmaks);
-        
+        // step4.1 线性化相对位姿和路标点
         lqr->linearizeProblem();
-        lqr->performQR(); // 这里相当于进行nullspace marginalization.得到Q_2^T * J_p和Q_2 * r 
+        // step4.2 marg路标点(in-place marginalization on landmark block)
+        lqr->performQR(); // 这里相当于进行nullspace marginalization.得到Q_2^T * J_p和Q_2^T * r 
                           // 这一步其实和optimize()里面的步骤是一样的。使用ns，用于marginalize landmarks 
 
         // vio_sqrt_marg默认配置项为true, 因此 marg_data.is_sqrt也为true。
         if (is_lin_sqrt && marg_data.is_sqrt) {
-          lqr->get_dense_Q2Jp_Q2r(Q2Jp_or_H, Q2r_or_b);
+          // step4.3 获取所有 landmark block 的 Q_2^T x J_p和Q_2^T x r, 以及marg prior H_m^{\prime}和b_m^{\prime}, 按行排列组成的Q2Jp, Q2r
+          lqr->get_dense_Q2Jp_Q2r(Q2Jp_or_H, Q2r_or_b); // marg的时候，执行的是get_dense_Q2Jp_Q2r
         } else {
           lqr->get_dense_H_b(Q2Jp_or_H, Q2r_or_b);
         }
@@ -1342,6 +1350,8 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
         }
       }
 
+      // step4.4 将aom.abs_order_map中的所有位姿序号分为要保留的和要边缘化的，分别存储起来
+      //- 判断aom.abs_order_map中的帧时间戳，如果是需要被marg的帧，则6维的pose序号添加到idx_to_marg, 否则添加进idx_to_keep.
       // aom.abs_order_map是一个map of key-value: key is timestamp & value is a pair of something like '(0, POSE_SIZE)'
       std::set<int> idx_to_keep, idx_to_marg;
       for (const auto& kv : aom.abs_order_map) {
@@ -1414,13 +1424,14 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
       MatX marg_sqrt_H_new;
       VecX marg_sqrt_b_new;
 
-      // 下面这一步应该是为了marginalize the frame variables
+      // step4.5 下面这一步应该是为了marginalize the frame variables
       {
         Timer t;
-        if (is_lin_sqrt && marg_data.is_sqrt) {
+        if (is_lin_sqrt && marg_data.is_sqrt) { // 是否线性化和marg均使用sqrt
+          ///TODO: marginalizeHelperSqrtToSqrt的作用值得仔细研究
           MargHelper<Scalar>::marginalizeHelperSqrtToSqrt(
               Q2Jp_or_H, Q2r_or_b, idx_to_keep, idx_to_marg, marg_sqrt_H_new,
-              marg_sqrt_b_new);
+              marg_sqrt_b_new); // 对于root vo来说，调用该函数进行marg，得到J_m和b_m
         } else if (marg_data.is_sqrt) {
           MargHelper<Scalar>::marginalizeHelperSqToSqrt(
               Q2Jp_or_H, Q2r_or_b, idx_to_keep, idx_to_marg, marg_sqrt_H_new,
@@ -1433,27 +1444,29 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
         stats_sums_.add("marg_helper", t.elapsed()).format("ms");
       }
 
+      // step4.6 参与了marg的视觉帧，设置线性化标志为true.
       for (auto& kv : frame_poses) {
         if (aom.abs_order_map.count(kv.first) > 0) {
           if (!kv.second.isLinearized()) kv.second.setLinTrue(); //? 加入到aom.abs_order_map的帧，才会设置线性化为true.
         }
       }
 
-      // 从frame_poses, prev_opt_flow_res中删除被marg的帧
+      // step4.7 从frame_poses, prev_opt_flow_res中删除被marg的帧
       for (const int64_t id : kfs_to_marg) {
         frame_poses.erase(id);
         prev_opt_flow_res.erase(id);
       }
 
-      // TODO: 从lmdb中删除关键帧，值得细看一下
+      // step4.8 从lmdb中删除被marg的帧
+      //TODO: 从lmdb中删除关键帧，值得细看一下
       lmdb.removeKeyframes(kfs_to_marg, kfs_to_marg, kfs_to_marg);
 
-      // 从lmdb中删除不被当前帧观测到的路标点
+      // step4.9 从lmdb中删除不被当前帧观测到的路标点
       if (config.vio_marg_lost_landmarks) {
         for (const auto& lm_id : lost_landmaks) lmdb.removeLandmark(lm_id);
       }
 
-      // 得到新的marg序号排列
+      // step4.10 得到新的marg序号排列
       AbsOrderMap marg_order_new;
 
       for (const auto& kv : frame_poses) {
@@ -1466,8 +1479,9 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
         }
       }
 
-      marg_data.H = marg_sqrt_H_new;
-      marg_data.b = marg_sqrt_b_new;
+      // step4.11 更新marg_data
+      marg_data.H = marg_sqrt_H_new; // 对于root vo来说，marg_sqrt_H_new = J_m
+      marg_data.b = marg_sqrt_b_new; // 对于root vo来说，marg_sqrt_b_new = b_m
       marg_data.order = marg_order_new;
 
       BASALT_ASSERT(size_t(marg_data.H.cols()) == marg_data.order.total_size);
@@ -1503,6 +1517,7 @@ bool SqrtKeypointVoEstimator<Scalar_>::marginalize(
         return false;
       }
 
+      // step4.12 减去b_m里面的偏移量
       marg_data.b -= marg_data.H * delta; // 计算线性点处的能量的偏置
 
       if (config.vio_debug || config.vio_extended_logging) {
@@ -1619,6 +1634,7 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
 
   int it = 0;
   int it_rejected = 0;
+  //TODO: 外面一个循环，内部还有一个lm循环，是否有必要????
   for (; it <= config.vio_max_iterations && !terminated;) {
     if (it > 0) {
       timer_iteration.reset();
@@ -1778,7 +1794,7 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
         inc = -inc; // -Δxp 转换为Δxp
 
         Timer t;
-        // 将求得的位姿增量的解转化为-Δxp，进行回代来求解路标点的增量Δxl
+        // 将求得的位姿增量的解转化为Δxp，进行回代来求解路标点的增量Δxl
         l_diff = lqr->backSubstitute(inc); // 用增量来更新点
         stats.add("backSubstitute", t.reset()).format("ms");
 
@@ -1799,7 +1815,11 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
 
       // apply increment to poses 应用增量到位姿
       for (auto& [frame_id, state] : frame_poses) {
+        // frame_id是时间戳也是帧序号
+        // aom.abs_order_map存储的是序号和POSE_SIZE维数的pair对
+        // POSE_SIZE = 6维，idx是帧在位姿增量里面的维数序号从0, 6, 12, 18, ...开始
         int idx = aom.abs_order_map.at(frame_id).first;
+        // applyInc位于imu_types.h文件中
         state.applyInc(inc.template segment<POSE_SIZE>(idx));
       }
 
@@ -1830,6 +1850,7 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
       Scalar relative_decrease = 0;
       {
         // compute actual cost decrease
+        // 线性化所有landmark得到的残差之和减去增量更新之后的残差
         f_diff = error_total - after_error_total;
 
         relative_decrease = f_diff / l_diff;
@@ -1850,6 +1871,7 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
         // occur since our linear systems are not that big (compared to large
         // scale BA for example) and we also abort optimization quite early and
         // usually don't have large damping (== tiny step size).
+        // 如果l_diff > 0 && relative_decrease > 0迭代就是成功的。
         step_is_valid = l_diff > 0;
         step_is_successful = step_is_valid && relative_decrease > 0;
       }
@@ -1895,7 +1917,7 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
           terminated = true;
         }
 
-        // stop inner lm loop
+        // stop inner lm loop 退出lm内循环
         break;
       } else {
         std::string reason = step_is_valid ? "REJECTED" : "INVALID";
@@ -1916,8 +1938,8 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
         //        lambda = std::max(min_lambda, lambda);
         //        lambda = std::min(max_lambda, lambda);
 
-        restore();
-        it++;
+        restore(); // 恢复（回滚）状态。
+        it++; // 继续迭代
         it_rejected++;
 
         if (lambda > max_lambda) {
@@ -1925,9 +1947,9 @@ int SqrtKeypointVoEstimator<Scalar_>::optimize() { // change return type from 'v
           message =
               "Solver did not converge and reached maximum damping lambda";
         }
-      }
-    }
-  }
+      } // if (step_is_successful)
+    } // for (int j = 0; it <= config.vio_max_iterations && !terminated; j++)
+  } // for (; it <= config.vio_max_iterations && !terminated;) 
 
   // std::cout << "num_it = " << it << std::endl;
 
