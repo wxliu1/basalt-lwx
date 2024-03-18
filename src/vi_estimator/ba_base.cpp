@@ -242,7 +242,7 @@ void BundleAdjustmentBase<Scalar_>::get_current_points(
   points.clear();
   ids.clear();
 
-  for (const auto& tcid_host : lmdb.getHostKfs()) {
+  for (const auto& tcid_host : lmdb.getHostKfs()) { // 第一层循环，获取所有的主帧进行遍历
     Sophus::SE3<Scalar> T_w_i;
 
     int64_t id = tcid_host.frame_id;
@@ -250,19 +250,19 @@ void BundleAdjustmentBase<Scalar_>::get_current_points(
       PoseVelBiasStateWithLin<Scalar> state = frame_states.at(id);
       T_w_i = state.getState().T_w_i;
     } else if (frame_poses.count(id) > 0) {
-      PoseStateWithLin<Scalar> state = frame_poses.at(id);
+      PoseStateWithLin<Scalar> state = frame_poses.at(id); // 根据时间戳得到主帧
 
-      T_w_i = state.getPose();
+      T_w_i = state.getPose(); // imu系到world系的位姿
     } else {
       std::cout << "Unknown frame id: " << id << std::endl;
       std::abort();
     }
 
     const Sophus::SE3<Scalar>& T_i_c = calib.T_i_c[tcid_host.cam_id];
-    Mat4 T_w_c = (T_w_i * T_i_c).matrix();
+    Mat4 T_w_c = (T_w_i * T_i_c).matrix(); // 通过外参转换成cam系到world系的位姿
 
     for (const Keypoint<Scalar>* kpt_pos :
-         lmdb.getLandmarksForHost(tcid_host)) {
+         lmdb.getLandmarksForHost(tcid_host)) { // 获取主帧对应的所有路标点
       Vec4 pt_cam = StereographicParam<Scalar>::unproject(kpt_pos->direction);
       pt_cam[3] = kpt_pos->inv_dist;
 

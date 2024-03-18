@@ -111,12 +111,18 @@ std::vector<TimeCamId> LandmarkDatabase<Scalar_>::getHostKfs() const {
   return res;
 }
 
+// @param tcid 主帧的时间戳(frame id) + 相机id(0 or 1)组成的对象
 template <class Scalar_>
 std::vector<const Keypoint<Scalar_> *>
 LandmarkDatabase<Scalar_>::getLandmarksForHost(const TimeCamId &tcid) const {
   std::vector<const Keypoint<Scalar> *> res;
 
+  // observations.at(tcid)返回的是一个map: std::map<TimeCamId, std::set<KeypointId>>
+  // 因此，外层循环遍历map,返回键值对：k, obs
+  // k是目标帧标识，由时间戳+相机id组成，obs是目标帧对应的路标点id集合(set)
   for (const auto &[k, obs] : observations.at(tcid))
+    // 内层循环: v是路标点id
+    ///TODO: 此处会添加重复的路标点id???? 由于多个目标帧会观测到同一个路标点，因此这里有重复添加的可能性??
     for (const auto &v : obs) res.emplace_back(&kpts.at(v));
 
   return res;

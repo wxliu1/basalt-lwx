@@ -899,8 +899,8 @@ bool SqrtKeypointVoEstimator<Scalar_>::measure(
   }
 */
   // self-define these two variables by wxliu
-  int nTrackedPoints = 0;
-  int nOptFlowPatches = 0;
+  int nTrackedPoints = 0; // 跟踪点的个数
+  int nOptFlowPatches = 0; // patch总数，也是点的总数
 
   if (out_vis_queue) {
     // 用于在pangonlin上显示追踪的特征点和光流patch
